@@ -113,9 +113,8 @@ def cmd_probe(args: argparse.Namespace) -> None:
         try:
             info = model_info(spec.model_id)
             params = info.safetensors.total if info.safetensors else None
-            print(
-                f"pipeline={info.pipeline_tag} params={params} license={info.card_data and info.card_data.get('license')}"
-            )
+            license_ = info.card_data.get("license") if info.card_data else None
+            print(f"pipeline={info.pipeline_tag} params={params} license={license_}")
             config = json.loads(Path(hf_hub_download(spec.model_id, "config.json")).read_text())
             print(
                 "architectures:",
@@ -227,7 +226,8 @@ def cmd_report(args: argparse.Namespace) -> None:
     lines = [
         f"MLSUM-TR test, n={results[0]['n']} (seed {SEED}), {results[0]['dataset']}",
         "",
-        "| Model | Parametre | ROUGE-1 | ROUGE-2 | ROUGE-L | BERTScore F1 | p50 (sn) | p95 (sn) | Yükleme (sn) |",
+        "| Model | Parametre | ROUGE-1 | ROUGE-2 | ROUGE-L | BERTScore F1 "
+        "| p50 (sn) | p95 (sn) | Yükleme (sn) |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for r in results:
