@@ -55,6 +55,8 @@ class ModelSpec:
     prefix: str = ""
     """Bazı modeller eğitimde bir görev öneki ile beslenmiştir."""
     max_new_tokens: int = 128
+    min_new_tokens: int = 0
+    """Asgari özet uzunluğu; tek kelimelik "özetleri" engeller."""
     num_beams: int = 4
     no_repeat_ngram_size: int = 3
     license_note: str = ""
@@ -182,6 +184,7 @@ class HFSummarizer:
                 generated = model.generate(
                     **encoded,
                     max_new_tokens=self.spec.max_new_tokens,
+                    min_new_tokens=self.spec.min_new_tokens,
                     num_beams=self.spec.num_beams,
                     no_repeat_ngram_size=self.spec.no_repeat_ngram_size,
                     early_stopping=True,

@@ -1,6 +1,6 @@
 """Gerçek transformers koduyla, ağ gerektirmeden model testleri.
 
-Yerelde küçük bir SentencePiece tokenizer eğitilir ve rastgele ağırlıklı
+Yerelde küçük bir Unigram (SentencePiece tarzı) tokenizer eğitilir ve rastgele ağırlıklı
 minik bir T5 kaydedilir. Çıktı anlamsızdır ama yükleme, katı ağırlık
 denetimi, üretim ve map-reduce gerçek kütüphane üzerinden çalışır.
 
@@ -16,7 +16,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 transformers = pytest.importorskip("transformers")
-spm = pytest.importorskip("sentencepiece")
+tokenizers = pytest.importorskip("tokenizers")
 safetensors_torch = pytest.importorskip("safetensors.torch")
 
 from ozetle.models.loader import ModelLoadError  # noqa: E402
@@ -33,20 +33,25 @@ from pdf_fixtures import finding, make_article_pdf  # noqa: E402
 @pytest.fixture(scope="module")
 def tiny_model(tmp_path_factory: pytest.TempPathFactory) -> Path:
     root = tmp_path_factory.mktemp("tiny")
-    corpus = root / "corpus.txt"
-    corpus.write_text("\n".join(finding(i) for i in range(1, 200)), encoding="utf-8")
-    spm.SentencePieceTrainer.train(
-        input=str(corpus),
-        model_prefix=str(root / "spiece"),
+    special = ["<pad>", "</s>", "<unk>"]
+    sp = tokenizers.SentencePieceUnigramTokenizer()
+    sp.train_from_iterator(
+        [finding(i) for i in range(1, 200)],
         vocab_size=300,
-        character_coverage=1.0,
-        pad_id=0,
-        eos_id=1,
-        unk_id=2,
-        bos_id=-1,
-        minloglevel=2,
+        special_tokens=special,
+        unk_token="<unk>",
+        show_progress=False,
     )
-    tokenizer = transformers.T5Tokenizer(vocab_file=str(root / "spiece.model"), extra_ids=0)
+    # transformers 4 ve 5'te aynı biçimde çalışan yol: tokenizers nesnesini sarmala.
+    tokenizer = transformers.PreTrainedTokenizerFast(
+        tokenizer_object=sp._tokenizer,
+        pad_token="<pad>",
+        eos_token="</s>",
+        unk_token="<unk>",
+    )
+    tokenizer._tokenizer.post_processor = tokenizers.processors.TemplateProcessing(
+        single="$A </s>", special_tokens=[("</s>", tokenizer.eos_token_id)]
+    )
     config = transformers.T5Config(
         vocab_size=len(tokenizer),
         d_model=32,
@@ -68,7 +73,14 @@ def tiny_model(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def _spec(path: Path, **kw: object) -> ModelSpec:
-    return ModelSpec(key="tiny", model_id=str(path), max_new_tokens=8, num_beams=2, **kw)  # type: ignore[arg-type]
+    return ModelSpec(
+        key="tiny",
+        model_id=str(path),
+        max_new_tokens=8,
+        min_new_tokens=4,  # rastgele model aksi halde hemen </s> üretir
+        num_beams=2,
+        **kw,  # type: ignore[arg-type]
+    )
 
 
 def test_katı_yukleme_basarili(tiny_model: Path) -> None:
@@ -101,7 +113,7 @@ def test_ozet_uretir(tiny_model: Path) -> None:
     summarizer = HFSummarizer(_spec(tiny_model), batch_size=2)
     out = summarizer.summarize_batch([finding(1), finding(2), finding(3)])
     assert len(out) == 3
-    assert all(isinstance(s, str) for s in out)
+    assert all(isinstance(s, str) and s for s in out)
     assert summarizer.count_tokens(finding(1)) > 10
 
 
@@ -114,3 +126,4 @@ def test_uctan_uca_map_reduce(tiny_model: Path, tmp_path: Path) -> None:
     result = summarize_document([c.text for c in doc.chunks], summarizer)
     assert len(result.partials) == len(doc.chunks)
     assert result.rounds >= 2
+    assert result.summary
