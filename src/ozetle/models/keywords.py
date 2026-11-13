@@ -10,10 +10,15 @@ Eski kodda üç sessiz hata vardı:
 3. KeyBERT'in vektörleştiricisi ``str.lower()`` kullanır. "İçin" → "i̇çin"
    (birleşik nokta) olur ve stopword listesindeki "için" ile eşleşmez.
    Burada Türkçe küçültme ön işlemcisi verilir.
+
+Gerçek modelle ilk denemede bir sorun daha görüldü: "ölçüldü dr", "toplam mg"
+gibi adaylar. Kısaltmalar (iki harf) ve çekimli fiiller ("gözlendi",
+"verilmiştir") anahtar kelime olamaz; :func:`candidate_tokens` bunları eler.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -43,6 +48,36 @@ TURKISH_STOPWORDS: frozenset[str] = frozenset({
 # fmt: on
 
 
+_WORD = re.compile(r"[^\W\d_]{3,}")
+
+#: Çekimli fiil sonları. Bilinçli olarak dar tutuldu: Türkçede isimler de
+#: -ti/-di ile bitebilir ("kas kuvveti", "beklenti", "kültür"); bunlar
+#: elenirse en değerli anahtar kelimeler kaybolur. Yalnızca fiile özgü
+#: biçimler yakalanır:
+#:   yapılmış(tır) · artmaktadır · artıyor · ölçüldü / bulundu / verildi ·
+#:   gözlendi · gösterdi · azalttı · önemlidir
+_VERB_FORM = re.compile(
+    r"(?:m[ıiuü]ş(?:t[ıiuü]r)?|m[ae]kt[ae]d[ıi]r|[ıiuü]yor(?:du|dı|lar)?"
+    r"|[ıiuü][lnr]d[ıiuü]|l[ae]nd[ıi]|[ae]rd[ıi]|tt[ıiuü]|d[ıiuü]r)$"
+)
+
+
+def candidate_tokens(text: str) -> list[str]:
+    """Anahtar kelime adayı olabilecek kelimeler (Türkçe küçültülmüş).
+
+    >>> candidate_tokens("Kas kuvveti 12 hafta sonra anlamlı ölçüde arttı ve gözlendi; dr mg")
+    ['kas', 'kuvveti', 'hafta', 'anlamlı', 'ölçüde', 'arttı']
+    """
+    out = []
+    for token in _WORD.findall(turkish_lower(text)):
+        if token in TURKISH_STOPWORDS:
+            continue
+        if len(token) > 5 and _VERB_FORM.search(token):
+            continue
+        out.append(token)
+    return out
+
+
 @dataclass(frozen=True, slots=True)
 class Keyword:
     phrase: str
@@ -59,9 +94,9 @@ def _turkish_vectorizer() -> Any:
 
     return CountVectorizer(
         ngram_range=(1, 2),
-        preprocessor=turkish_lower,
-        stop_words=sorted(TURKISH_STOPWORDS),
-        token_pattern=r"(?u)\b[^\W\d_]{2,}\b",  # yalnızca harflerden oluşan kelimeler
+        tokenizer=candidate_tokens,  # küçültme, stopword ve fiil eleme burada
+        lowercase=False,
+        token_pattern=None,
     )
 
 

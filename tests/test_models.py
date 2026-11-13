@@ -402,3 +402,31 @@ class TestDownload:
         monkeypatch.setattr(download, "fetch", lambda repo: pytest.fail("indirmemeli"))
         download.main(["--model", "lead", "--no-keywords"])
         assert capsys.readouterr().out == ""
+
+
+class TestCandidateTokens:
+    @pytest.mark.parametrize(
+        "fiil",
+        ["gözlendi", "ölçüldü", "verilmiştir", "artmaktadır", "azalttı", "yapıldı", "bulundu",
+         "önemlidir", "artıyor", "gösterdi", "edildi"],
+    )  # fmt: skip
+    def test_cekimli_fiil_elenir(self, fiil):
+        from ozetle.models.keywords import candidate_tokens
+
+        assert candidate_tokens(fiil) == []
+
+    @pytest.mark.parametrize(
+        "isim",
+        ["kuvveti", "fizyoterapi", "rehabilitasyon", "kültür", "beklenti", "osteoartriti",
+         "hastaların", "fonksiyonel", "tedavi", "programı"],
+    )  # fmt: skip
+    def test_ti_di_ile_biten_isim_korunur(self, isim):
+        """'kas kuvveti' gibi alanın en önemli terimleri fiil sanılmamalı."""
+        from ozetle.models.keywords import candidate_tokens
+
+        assert candidate_tokens(isim) == [isim]
+
+    def test_kisaltma_ve_sayi_elenir(self):
+        from ozetle.models.keywords import candidate_tokens
+
+        assert candidate_tokens("500 mg doz, Dr. Yılmaz") == ["doz", "yılmaz"]
