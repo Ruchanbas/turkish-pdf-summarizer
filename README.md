@@ -67,7 +67,7 @@ The stage order matters:
 2. Finding the reference heading needs line breaks, so it runs before lines are unwrapped.
 3. Cleaning runs last, because it deliberately destroys line structure.
 
-Long documents use map-reduce. Each chunk is summarized first. If the joined partial summaries fit the model window, they are summarized once more. If not, they are re-chunked and the step repeats.
+Long documents use map-reduce. Each chunk is summarized first. If the partial summaries together are already summary-length (up to 120 words), they are joined in document order and the reduce step is skipped. That decision came from real output (see below): each extra model pass loses information and invites invention. Only longer documents are reduced. When the joined partials fit the model window they are summarized once more; otherwise they are re-chunked and the step repeats.
 
 ## Choosing the model: benchmark
 
@@ -110,6 +110,7 @@ Each bug below has a regression test.
 | **The fixtures weren't testing Turkish.** reportlab's Helvetica cannot encode `ı ş ğ İ`, so "yapılmıştır" went into the test PDFs already broken and the tests still passed. The fixtures now embed DejaVu Sans. The same discovery led to the encoding guard for user PDFs with non-embedded fonts. | `test_helvetica_turkce_tasiyamaz` |
 | **A false column gutter.** On pages of similar lines, word gaps lined up vertically and the column detector split every line down the middle. Gutters must now be wider than a word gap. | `test_tek_sutunda_yanlis_pozitif_yok` |
 | **Overlap broke the token budget.** The overlap sentence carried into the next chunk was never re-checked against the budget. | `test_ortusme_butceyi_delemez` |
+| **The reduce step distorted good notes.** On the sample article, both section notes were accurate, but re-summarizing them made the model drop the first and rewrite the second. A study limitation, "participants were recruited from a single centre", came out as a recommendation: "experts should be selected from a single centre". The reduce step now runs only when the notes are too long to read as a summary. | `test_kisa_toplamda_reduce_yapilmaz` |
 | **The tail merge only worked by cheating.** Merging a small last chunk into the previous one only ever succeeded through a 15% tolerance, i.e. by exceeding the budget. Under greedy packing and a hard budget it can never succeed, so it was deleted. | `test_son_parca_butceyi_asmaz` |
 | **Headings glued to sentences, then copied into the summary.** Unpunctuated headings ran into the following text ("…etkisi Özet Bu çalışmada…") and broke sentence splitting. Worse, the news-trained model copied the title into the summary, because a news article's first line is its lead. Headings are now paragraphs of their own and stay out of the model input; keyword extraction still sees them, since a title is the best keyword source. | `TestHeadings`, `test_baslik_ozetleyiciye_gitmez_anahtar_kelimeye_gider` |
 | **Keyword junk.** `stop_words="turkish"` does not exist in scikit-learn, and `str.lower()` turns `İ` into `i̇`. The real model then showed more: abbreviations and verbs ("ölçüldü dr"), n-grams across removed words ("sonuçları ortalama", which appears nowhere in the text), and pairs across phrase boundaries ("etkinin kas", "osteoartritinde ağrıyı"). Pairs now form only from truly adjacent words, never with a case-marked word. Vowel harmony keeps "fiziksel aktivite" intact: after a vowel the locative is always -da/-de, so "aktivite" is not mistaken for one. | `TestCandidatePhrases`, `TestPairFilter` |
@@ -179,7 +180,7 @@ Then run the **Deploy** workflow (or push to `main`). It builds the worker image
 
 ## Quality gates
 
-352 tests (including doctests), 97% branch coverage, `ruff` clean, `mypy --strict` clean. CI runs these jobs on every pull request:
+362 tests (including doctests), 97% branch coverage, `ruff` clean, `mypy --strict` clean. CI runs these jobs on every pull request:
 
 | Job | What it proves |
 |---|---|
