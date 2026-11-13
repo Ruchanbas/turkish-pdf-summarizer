@@ -167,6 +167,32 @@ def unwrap_lines(text: str) -> str:
     return "\n\n".join(out)
 
 
+_TERMINAL = ".!?…"
+
+
+def drop_headings(text: str, *, max_words: int = 15) -> str:
+    """Noktalamasız kısa paragrafları (başlıkları) özetleyici girdisinden çıkarır.
+
+    Haber verisiyle eğitilmiş modeller girdinin ilk satırını kopyalamaya
+    yatkındır; gerçek bir makalede bu satır başlıktır ve özet
+    "Diz osteoartritinde ... etkisi Özet Bu çalışmada ..." diye başlar.
+    Başlıklar içerik değil yapı taşır. Anahtar kelime çıkarımı ise tam metni
+    kullanmaya devam eder: başlık, en iyi anahtar kelime kaynağıdır.
+
+    >>> drop_headings("Başlık Burada\\n\\nÖzet\\n\\nBu bir cümledir.")
+    'Bu bir cümledir.'
+    """
+    kept = [
+        p for p in text.split("\n\n") if p.rstrip()[-1:] in _TERMINAL or len(p.split()) > max_words
+    ]
+    return "\n\n".join(kept)
+
+
+def tidy_output(text: str) -> str:
+    """Model çıktısındaki kod çözme artıklarını toparlar: "ağrı , işlev" → "ağrı, işlev"."""
+    return normalize_whitespace(" ".join(text.split()))
+
+
 def normalize_whitespace(text: str) -> str:
     """Fazla boşlukları ve atıf silmenin bıraktığı izleri toparlar."""
     lines = []

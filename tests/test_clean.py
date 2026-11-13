@@ -167,3 +167,24 @@ class TestHeadings:
 
         metin = clean(f"Özet\n{self.GOVDE}\nprogram incelenmiştir.")
         assert split_sentences(metin)[0] == "Özet"
+
+
+class TestModelInput:
+    def test_baslik_model_girdisinden_cikar(self) -> None:
+        from ozetle.text.clean import drop_headings
+
+        metin = "Diz osteoartritinde egzersizin etkisi\n\nÖzet\n\nBu çalışma yapıldı.\n\nYöntem"
+        assert drop_headings(metin) == "Bu çalışma yapıldı."
+
+    def test_noktasiz_uzun_paragraf_korunur(self) -> None:
+        from ozetle.text.clean import drop_headings
+
+        uzun = " ".join(["kelime"] * 20)
+        assert drop_headings(uzun) == uzun
+
+    def test_model_ciktisi_toparlanir(self) -> None:
+        from ozetle.text.clean import tidy_output
+
+        assert tidy_output(" ağrı ,  fonksiyonel kapasite ( n = 32 ) arttı . ") == (
+            "ağrı, fonksiyonel kapasite ( n = 32) arttı."
+        )

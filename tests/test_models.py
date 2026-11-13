@@ -474,3 +474,28 @@ class TestCandidatePhrases:
         from ozetle.models.keywords import candidate_phrases
 
         assert "iyileşme fizyoterapist" not in candidate_phrases("iyileşme gözlendi fizyoterapist")
+
+
+class TestPairFilter:
+    @pytest.mark.parametrize(
+        "cop",
+        ["egzersizi tedavinin", "egzersiz grubunda", "osteoartritinde ağrıyı",
+         "yetişkinlerde ağrının", "etkinin kas", "hastalıkta ağrı", "dakikada nabız"],
+    )  # fmt: skip
+    def test_hal_ekli_ikili_kurulmaz(self, cop):
+        """Gerçek modelde görüldü: iki ayrı öbeğin sınırını aşan ikililer."""
+        from ozetle.models.keywords import candidate_phrases
+
+        assert not [p for p in candidate_phrases(cop) if " " in p]
+
+    @pytest.mark.parametrize(
+        "iyi",
+        ["kas kuvveti", "diz osteoartriti", "egzersiz programı", "vitamin eksikliği",
+         "insülin direnci", "beden eğitimi", "fiziksel aktivite", "yaşam kalitesi",
+         "fonksiyonel kapasite", "makine öğrenmesi"],
+    )  # fmt: skip
+    def test_gecerli_ikili_korunur(self, iyi):
+        """'aktivite' ünlü + -te ile biter ama bulunma eki değildir (ses uyumu)."""
+        from ozetle.models.keywords import candidate_phrases
+
+        assert iyi in candidate_phrases(iyi)

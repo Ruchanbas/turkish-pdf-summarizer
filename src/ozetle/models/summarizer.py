@@ -27,6 +27,7 @@ from ozetle.models.loader import (
     tied_to_loaded,
 )
 from ozetle.text.chunk import chunk_text, heuristic_token_count, split_sentences
+from ozetle.text.clean import tidy_output
 
 logger = logging.getLogger(__name__)
 
@@ -231,8 +232,7 @@ class HFSummarizer:
                     early_stopping=True,
                 )
             outputs.extend(
-                " ".join(s.split())
-                for s in tokenizer.batch_decode(generated, skip_special_tokens=True)
+                tidy_output(s) for s in tokenizer.batch_decode(generated, skip_special_tokens=True)
             )
         return outputs
 

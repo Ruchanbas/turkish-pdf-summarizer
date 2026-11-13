@@ -123,3 +123,18 @@ class TestCli:
         sahte.write_text("PDF değil")
         assert main([str(sahte)]) == 1
         assert "hata:" in capsys.readouterr().err
+
+
+def test_baslik_ozetleyiciye_gitmez_anahtar_kelimeye_gider(tmp_path):
+    """Gerçek modelde görüldü: özet makale başlığını kopyalayarak başlıyordu."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from make_sample_pdf import TITLE, build
+
+    doc = prepare(build(tmp_path / "ornek.pdf"))
+    chunks = " ".join(c.text for c in doc.chunks)
+    assert TITLE.split()[0] not in chunks.split()[:3]
+    assert "Özet Bu" not in chunks
+    assert "Diz osteoartritinde denetimli" in doc.text  # anahtar kelimeler için tam metin
