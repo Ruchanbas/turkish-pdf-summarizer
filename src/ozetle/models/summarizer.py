@@ -68,7 +68,9 @@ MODELS: dict[str, ModelSpec] = {
     spec.key: spec
     for spec in (
         ModelSpec("bert2bert", "mrm8488/bert2bert_shared-turkish-summarization"),
-        ModelSpec("mt5-small", "ozcangundes/mt5-small-turkish-summarization"),
+        # Model kartı: eğitimde 784 token girdi. mT5 göreli konum kodlaması
+        # kullandığı için 512 sınırı yok; daha uzun pencere = daha az parça.
+        ModelSpec("mt5-small", "ozcangundes/mt5-small-turkish-summarization", max_input_tokens=768),
         ModelSpec("mt5-base", "mukayese/mt5-base-turkish-summarization"),
         ModelSpec(
             "turna",

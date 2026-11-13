@@ -1,0 +1,99 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: Virgülle ayrılmış model anahtarları
+        default: lead,bert2bert,mt5-small,mt5-base,turna
+      n:
+        description: Örnek sayısı (MLSUM-TR test)
+        default: "100"
+      probe:
+        description: Yalnızca modelleri ve veri setini yokla
+        type: boolean
+        default: false
+  push:
+    branches: [faz2-benchmark]
+    paths: [bench/**, .github/workflows/bench.yml]
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_PROGRESS_BARS: "1"
+  TOKENIZERS_PARALLELISM: "false"
+
+jobs:
+  probe:
+    if: github.event_name == 'push' || inputs.probe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[bench]"
+      - run: python bench/run.py probe
+      - name: TURNA görev öneki (model kartı yok, ölçerek seç)
+        run: python bench/run.py prefix --model turna --n 8
+
+  plan:
+    if: github.event_name == 'workflow_dispatch' && !inputs.probe
+    runs-on: ubuntu-latest
+    outputs:
+      models: ${{ steps.p.outputs.models }}
+    steps:
+      - id: p
+        env:
+          MODELS: ${{ inputs.models }}
+        run: echo "models=$(python3 -c 'import json,os; print(json.dumps(os.environ["MODELS"].split(",")))')" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        model: ${{ fromJSON(needs.plan.outputs.models) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ matrix.model }}-v1
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[bench]"
+      - run: python bench/run.py run --model "${{ matrix.model }}" --n "${{ inputs.n }}" --out results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.model }}
+          path: results/
+
+  report:
+    needs: run
+    if: always() && needs.run.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          merge-multiple: true
+          path: results
+      - run: pip install -e .
+      - run: python bench/run.py report results | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-report
+          path: results/
