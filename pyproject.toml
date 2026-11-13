@@ -25,7 +25,28 @@ models = [
     "sentence-transformers>=3.0",
     "scikit-learn>=1.4",
 ]
+service = [
+    "pydantic-settings>=2.2",
+    "boto3>=1.34",
+]
+api = [
+    "ozetle[service]",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+    "mangum>=0.17",
+]
+worker = ["ozetle[service,models]"]
+bench = [
+    "ozetle[models]",
+    "datasets>=2.19",
+    "rouge-score>=0.1.2",
+    "bert-score>=0.3.13",
+]
 dev = [
+    "ozetle[api]",
+    "httpx>=0.27",
+    "moto[dynamodb,s3]>=5.0",
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "reportlab>=4.0",     # yalnızca test fixture'ları için PDF üretir
@@ -35,6 +56,7 @@ dev = [
 
 [project.scripts]
 ozetle = "ozetle.__main__:main"
+ozetle-serve = "ozetle.service.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ozetle"]
@@ -81,5 +103,8 @@ files = ["src"]
 
 [[tool.mypy.overrides]]
 # Ağır ML kütüphaneleri yalnızca fonksiyon içinde, tembel içe aktarılır.
-module = ["torch", "torch.*", "transformers", "transformers.*", "keybert", "keybert.*", "sklearn", "sklearn.*"]
+module = [
+    "torch", "torch.*", "transformers", "transformers.*", "keybert", "keybert.*",
+    "sklearn", "sklearn.*", "boto3", "boto3.*", "botocore", "botocore.*",
+]
 ignore_missing_imports = true
