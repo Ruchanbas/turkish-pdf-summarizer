@@ -589,9 +589,22 @@ class TestLogs:
 
 
 class TestEngine:
-    def test_motor_tembel_kurulur(self) -> None:
+    def test_motor_tembel_kurulur(self, monkeypatch) -> None:
+        import importlib.util
+
         from ozetle.models.summarizer import HFSummarizer
+        from ozetle.service import engine as engine_module
         from ozetle.service.engine import build_engine, cached_engine_factory
+
+        # keybert kurulu olmasa da (CI test işi) KeyBERT yolunu sına; kurulum
+        # tembel olduğu için paket gerçekten içe aktarılmaz.
+        real_find_spec = importlib.util.find_spec
+        monkeypatch.setattr(
+            importlib.util,
+            "find_spec",
+            lambda name, *a: object() if name == "keybert" else real_find_spec(name, *a),
+        )
+        engine_module._engine_for.cache_clear()
 
         engine = build_engine(Settings(model="mt5-base", keywords_enabled=False))
         assert isinstance(engine.summarizer, HFSummarizer)
@@ -600,3 +613,19 @@ class TestEngine:
         factory = cached_engine_factory(Settings(model="mt5-base"))
         assert factory() is factory()  # süreç başına tek motor
         assert factory().keywords is not None
+
+    def test_lead_modu_model_indirmez(self, monkeypatch) -> None:
+        import importlib.util
+
+        from ozetle.models.summarizer import LeadSummarizer
+        from ozetle.service.engine import build_engine
+
+        real_find_spec = importlib.util.find_spec
+        monkeypatch.setattr(
+            importlib.util,
+            "find_spec",
+            lambda name, *a: None if name == "keybert" else real_find_spec(name, *a),
+        )
+        engine = build_engine(Settings(model="lead"))
+        assert isinstance(engine.summarizer, LeadSummarizer)
+        assert engine.keywords is None  # keybert yok → kapalı, çökme yok

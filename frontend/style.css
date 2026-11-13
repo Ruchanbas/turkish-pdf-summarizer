@@ -1,0 +1,609 @@
+/* ozetle — kâğıt, mürekkep ve fosforlu kalem.
+   Tek cesur öğe fosforlu işaret; geri kalan her şey sakin. */
+
+:root {
+  --paper: #f4f6f8;
+  --sheet: #ffffff;
+  --ink: #1f2a44;
+  --pencil: #5f6b7a;
+  --rule: #d5dbe3;
+  --pen: #2747b8;
+  --marker: #ffe45c;
+  --marker-ink: #1f2a44;
+  --danger: #b3261e;
+  --warn-bg: #fff6d6;
+
+  --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+
+  /* Ölçek: 1.25 (major third), taban 17px */
+  --step--1: 0.85rem;
+  --step-0: 1.0625rem;
+  --step-1: 1.33rem;
+  --step-2: 1.66rem;
+  --step-3: 2.07rem;
+  --step-4: 2.6rem;
+
+  --measure: 68ch;
+  --radius-sheet: 2px;
+  --radius-control: 6px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #151b29;
+    --sheet: #1c2436;
+    --ink: #e6eaf2;
+    --pencil: #9aa6b8;
+    --rule: #33405a;
+    --pen: #8ea6ff;
+    /* Koyu zeminde yarı saydam işaret: metin rengi işaretin içinde ve
+       dışında aynı kalır, çizim animasyonu sırasında harf kaybolmaz. */
+    --marker: rgba(232, 204, 58, 0.4);
+    --marker-ink: var(--ink);
+    --danger: #ff8a80;
+    --warn-bg: #2d2a1a;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 106.25%; /* 17px */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--step-0);
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+a {
+  color: var(--pen);
+  text-underline-offset: 0.18em;
+}
+
+:focus-visible {
+  outline: 3px solid var(--pen);
+  outline-offset: 3px;
+}
+
+/* Ekran okuyucu için programla odaklanan başlıklar çerçeve göstermez. */
+[tabindex="-1"]:focus {
+  outline: none;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------- Başlık */
+
+.masthead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 64rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 0;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink);
+  font-weight: 650;
+  font-size: var(--step-1);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.brand-mark {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
+.source-link {
+  font-size: var(--step--1);
+  color: var(--pencil);
+}
+
+/* -------------------------------------------------------- Yükleme alanı */
+
+.intake h1 {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: clamp(var(--step-3), 5vw, var(--step-4));
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  max-width: 20ch;
+  margin: 2.5rem 0 1rem;
+}
+
+.lede {
+  max-width: 52ch;
+  color: var(--pencil);
+  margin: 0 0 2.25rem;
+}
+
+.dropzone {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2rem;
+  padding: 2rem 2.25rem;
+  background: var(--sheet);
+  border: 2px dashed var(--rule);
+  border-radius: var(--radius-sheet);
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.dropzone:hover,
+.dropzone.is-over {
+  border-color: var(--pen);
+}
+
+.dropzone.is-over .sheet-mark {
+  stroke-dashoffset: 0;
+}
+
+.dropzone:focus-within {
+  outline: 3px solid var(--pen);
+  outline-offset: 3px;
+}
+
+.sheet {
+  width: 5.5rem;
+  height: auto;
+}
+
+.sheet-body,
+.sheet-fold,
+.sheet-line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.sheet-body {
+  fill: var(--paper);
+}
+
+.sheet-line {
+  stroke: var(--pencil);
+  stroke-width: 2.5;
+}
+
+.sheet-mark {
+  stroke: var(--marker);
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  mix-blend-mode: multiply;
+  transition: stroke-dashoffset 260ms ease-out;
+}
+
+.dropzone-text {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.dropzone-text strong {
+  font-size: var(--step-1);
+  font-weight: 650;
+}
+
+.fake-button {
+  color: var(--pen);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.limits {
+  font-size: var(--step--1);
+  color: var(--pencil);
+  margin-top: 0.5rem;
+}
+
+/* ------------------------------------------------------------ Bildirim */
+
+.notice {
+  max-width: var(--measure);
+  padding: 0.85rem 1rem;
+  border-left: 4px solid;
+  margin: 1.5rem 0 0;
+}
+
+.notice-error {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
+}
+
+.notice-warn {
+  border-color: var(--marker);
+  background: var(--warn-bg);
+  margin: 0 0 2rem;
+}
+
+.notice-warn ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+/* --------------------------------------------------------- İlerleme */
+
+.progress {
+  max-width: 40rem;
+  margin-top: 2.5rem;
+}
+
+.progress-file,
+.result-file {
+  font-family: var(--serif);
+  font-size: var(--step-2);
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 1.5rem;
+  overflow-wrap: anywhere;
+}
+
+.stages {
+  list-style: none;
+  counter-reset: stage;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.75rem;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  color: var(--pencil);
+}
+
+.stages li {
+  counter-increment: stage;
+  position: relative;
+}
+
+.stages li::before {
+  content: counter(stage) ". ";
+  font-variant-numeric: tabular-nums;
+}
+
+.stages li.is-done {
+  color: var(--ink);
+  text-decoration: line-through;
+  text-decoration-color: var(--pencil);
+}
+
+.stages li.is-current {
+  color: var(--marker-ink);
+  font-weight: 650;
+  background: linear-gradient(transparent 15%, var(--marker) 15%, var(--marker) 85%, transparent 85%);
+  padding: 0 0.2em;
+  margin: 0 -0.2em;
+}
+
+.meter {
+  height: 4px;
+  background: var(--rule);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--pen);
+  transition: width 150ms linear;
+}
+
+.meter.is-indeterminate span {
+  width: 30%;
+  animation: sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+
+.progress-status {
+  margin: 0 0 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-hint {
+  color: var(--pencil);
+  font-size: var(--step--1);
+  max-width: 52ch;
+}
+
+/* ------------------------------------------------------------ Butonlar */
+
+.button {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.6rem 1.05rem;
+  border-radius: var(--radius-control);
+  border: 2px solid var(--pen);
+  background: var(--pen);
+  color: var(--sheet);
+  cursor: pointer;
+}
+
+.button:hover {
+  filter: brightness(1.08);
+}
+
+.button-quiet {
+  background: transparent;
+  color: var(--pen);
+}
+
+.progress .button-quiet {
+  margin-top: 1rem;
+}
+
+/* -------------------------------------------------------------- Sonuç */
+
+.result {
+  margin-top: 2rem;
+}
+
+.result-head {
+  margin-bottom: 2rem;
+}
+
+.result-file {
+  margin-bottom: 0.4rem;
+}
+
+.result-facts {
+  color: var(--pencil);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary {
+  background: var(--sheet);
+  padding: 2rem 2.25rem;
+  border-radius: var(--radius-sheet);
+  box-shadow: 0 1px 0 var(--rule), 0 0 0 1px var(--rule);
+  max-width: calc(var(--measure) + 4.5rem);
+}
+
+.summary-text {
+  font-family: var(--serif);
+  font-size: var(--step-1);
+  line-height: 1.62;
+  margin: 0 0 1.75rem;
+  max-width: var(--measure);
+  hyphens: auto;
+}
+
+/* Fosforlu kalem — sayfanın tek cesur öğesi. Satır kırılsa da işaret her
+   satırda ayrı çizilsin diye box-decoration-break kullanılır. */
+mark {
+  color: var(--marker-ink);
+  background-color: transparent;
+  background-image: linear-gradient(100deg, transparent 0.06em, var(--marker) 0.06em, var(--marker) calc(100% - 0.06em), transparent calc(100% - 0.06em));
+  background-repeat: no-repeat;
+  background-size: 100% 78%;
+  background-position: 0 70%;
+  /* İşaret harflerin biraz dışına taşar ama satır düzenini kaydırmaz;
+     kelimenin ortasında bitse bile ("skor|larında") boşluk açılmaz. */
+  padding: 0 0.12em;
+  margin: 0 -0.12em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.is-revealing mark {
+  animation: draw 520ms cubic-bezier(0.3, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 150ms);
+}
+
+@keyframes draw {
+  from { background-size: 0% 78%; }
+  to { background-size: 100% 78%; }
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.copy-status {
+  min-height: 1.5em;
+  margin: 0.75rem 0 0;
+  color: var(--pencil);
+  font-size: var(--step--1);
+}
+
+.keywords,
+.sections {
+  margin-top: 3rem;
+}
+
+.keywords h3,
+.sections h3 {
+  font-size: var(--step-1);
+  font-weight: 650;
+  margin: 0 0 1rem;
+}
+
+.keyword-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.9rem;
+  font-family: var(--serif);
+  font-size: var(--step-1);
+}
+
+.sections-lede {
+  color: var(--pencil);
+  max-width: 60ch;
+  margin: -0.5rem 0 1.5rem;
+}
+
+.section-list {
+  list-style: none;
+  counter-reset: part;
+  padding: 0;
+  margin: 0;
+}
+
+.section-list > li {
+  counter-increment: part;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) minmax(0, 0.85fr);
+  gap: 0 1.75rem;
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.section-list > li::before {
+  content: counter(part);
+  font-family: var(--serif);
+  font-size: var(--step-1);
+  color: var(--pencil);
+  font-variant-numeric: oldstyle-nums;
+}
+
+.section-source {
+  margin: 0;
+  color: var(--pencil);
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+
+/* Kenar notu: modelin o parça için yazdığı özet. */
+.section-note {
+  margin: 0;
+  padding-left: 1rem;
+  border-left: 2px solid var(--pen);
+  font-family: var(--serif);
+  line-height: 1.55;
+}
+
+/* -------------------------------------------------------------- Dipnot */
+
+.colophon {
+  max-width: 64rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 2.5rem;
+  border-top: 1px solid var(--rule);
+  color: var(--pencil);
+  font-size: var(--step--1);
+}
+
+.colophon p {
+  max-width: 70ch;
+  margin: 0 0 0.4rem;
+}
+
+/* -------------------------------------------------------------- Mobil */
+
+@media (max-width: 40rem) {
+  main {
+    padding: 1.25rem 1rem 3rem;
+  }
+
+  .dropzone {
+    grid-template-columns: 1fr;
+    justify-items: start;
+    gap: 1.25rem;
+    padding: 1.5rem;
+  }
+
+  .sheet {
+    width: 4rem;
+  }
+
+  .summary {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .section-list > li {
+    grid-template-columns: 2rem minmax(0, 1fr);
+    row-gap: 0.75rem;
+  }
+
+  .section-note {
+    grid-column: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media print {
+  .masthead,
+  .actions,
+  .colophon,
+  .sections-lede {
+    display: none;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  .summary {
+    box-shadow: none;
+    padding: 0;
+  }
+}
