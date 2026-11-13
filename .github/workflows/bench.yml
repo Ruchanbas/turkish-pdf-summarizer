@@ -13,9 +13,6 @@ on:
         description: Yalnızca modelleri ve veri setini yokla
         type: boolean
         default: false
-  push:
-    branches: [faz2-benchmark]
-    paths: [bench/**, .github/workflows/bench.yml]
 
 permissions:
   contents: read
@@ -26,7 +23,7 @@ env:
 
 jobs:
   probe:
-    if: github.event_name == 'push' || inputs.probe
+    if: inputs.probe
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
