@@ -17,7 +17,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
-from typing import Generic, TypeVar, cast
+from typing import Any, Generic, TypeVar, cast
 
 logger = logging.getLogger(__name__)
 
@@ -114,3 +114,60 @@ def check_loading_info(
     unexpected = list(info.get("unexpected_keys", ()))
     if unexpected:
         logger.warning("%s: %d beklenmeyen ağırlık yok sayıldı.", model_id, len(unexpected))
+
+
+def retie_shared_encoder_decoder(model: Any, missing: Iterable[str]) -> set[str]:
+    """Paylaşımlı encoder-decoder kayıtlarında decoder'ı encoder'a yeniden bağlar.
+
+    ``tie_encoder_decoder=True`` ile eğitilmiş modellerin (ör. bert2bert
+    "shared") kaydında decoder'ın encoder ile ortak katmanları yoktur;
+    yükleyici onları encoder'a bağlamalıdır. transformers 4 bunu yapıyordu,
+    transformers 5 eski biçimdeki kayıtlarda yapmıyor: katmanlar rastgele
+    başlatılıyor ve yalnızca bir uyarı yazılıyor. Model hata vermeden
+    anlamsız özet üretiyor.
+
+    Yalnızca "eksik" görünen katmanlar değil, encoder'da karşılığı olan
+    **bütün** decoder katmanları bağlanır: transformers 5 decoder'ın kelime
+    gömmelerini çıkış katmanının kopyasından doldurur, bu yüzden onlar eksik
+    görünmez ama yine de encoder'a bağlı değildir. Bağ kopya değil, aynı
+    parametre nesnesidir.
+
+    Returns:
+        Eksik listesinden bu işlemle bağlanan anahtarlar. Kalanlar gerçek eksiktir.
+    """
+    if not getattr(getattr(model, "config", None), "tie_encoder_decoder", False):
+        return set()
+    base_prefix = model.decoder.base_model_prefix
+    decoder_base = getattr(model.decoder, base_prefix, None)
+    if decoder_base is None:
+        return set()
+
+    encoder_params = dict(model.encoder.named_parameters(remove_duplicate=False))
+    retied: set[str] = set()
+    for name, _ in list(decoder_base.named_parameters(remove_duplicate=False)):
+        if name not in encoder_params:
+            continue  # çapraz dikkat gibi decoder'a özgü katman
+        module_path, _, attr = name.rpartition(".")
+        module = decoder_base.get_submodule(module_path) if module_path else decoder_base
+        setattr(module, attr, encoder_params[name])
+        retied.add(f"decoder.{base_prefix}.{name}")
+
+    # Çıkış katmanı decoder'ın (artık encoder'la ortak) gömme matrisini paylaşır.
+    output = model.decoder.get_output_embeddings()
+    if output is not None and getattr(model.decoder.config, "tie_word_embeddings", True):
+        output.weight = decoder_base.get_input_embeddings().weight
+
+    logger.info("%d decoder ağırlığı encoder'a bağlandı (paylaşımlı model).", len(retied))
+    return {k for k in missing if k in retied}
+
+
+def tied_to_loaded(state_dict: Mapping[str, Any], missing: Iterable[str]) -> set[str]:
+    """Eksik görünen ama yüklenmiş bir ağırlıkla aynı belleği paylaşan anahtarlar.
+
+    Bağlı ağırlıklar (çıkış katmanının gömme matrisini paylaşması gibi)
+    kayıtta ayrıca bulunmaz. Bağlılık yapılandırmaya güvenilerek değil,
+    bellek adresine bakılarak **kanıtlanır**: paylaşmıyorsa gerçekten eksiktir.
+    """
+    missing = set(missing)
+    loaded = {t.data_ptr() for k, t in state_dict.items() if k not in missing}
+    return {k for k in missing if k in state_dict and state_dict[k].data_ptr() in loaded}
