@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ozetle: Türkçe PDF özetleme</title>
+  <meta name="description" content="Türkçe akademik PDF'leri özetler, anahtar kelimeleri çıkarır ve her bölümü kendi notuyla gösterir.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="./" aria-label="ozetle ana sayfa">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 4h11l6 6v18H8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 17h13" stroke="var(--marker)" stroke-width="5" stroke-linecap="round"/><path d="M11 22h9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      ozetle
+    </a>
+    <a class="source-link" href="https://github.com/Ruchanbas/turkish-pdf-summarizer">Kaynak kod</a>
+  </header>
+
+  <main id="main">
+    <!-- Boş durum: yükleme alanı -->
+    <section id="intake" class="intake" aria-labelledby="intake-title">
+      <h1 id="intake-title">Türkçe makaleyi bırakın, <span class="nowrap">özetini okuyun.</span></h1>
+      <p class="lede">PDF'teki her bölüm ayrı ayrı özetlenir, sonra tek bir özette birleştirilir. Başlıklar, sayfa numaraları ve kaynakça özete girmez.</p>
+
+      <label id="dropzone" class="dropzone" for="file-input">
+        <input id="file-input" type="file" accept="application/pdf,.pdf" class="visually-hidden">
+        <svg class="sheet" viewBox="0 0 120 150" aria-hidden="true">
+          <path class="sheet-body" d="M6 4h78l30 30v112H6z"/>
+          <path class="sheet-fold" d="M84 4v30h30"/>
+          <path class="sheet-line" d="M20 58h80M20 74h80M20 90h56"/>
+          <path class="sheet-mark" d="M18 74h72"/>
+        </svg>
+        <span class="dropzone-text">
+          <strong>PDF'i buraya sürükleyin</strong>
+          <span>veya <span class="fake-button">dosya seçin</span></span>
+          <span id="limits" class="limits">En fazla 20 MB, ilk 60 sayfa okunur.</span>
+        </span>
+      </label>
+      <p id="intake-error" class="notice notice-error" role="alert" hidden></p>
+    </section>
+
+    <!-- İşlem sürüyor -->
+    <section id="progress" class="progress" aria-labelledby="progress-title" hidden>
+      <h2 id="progress-title" class="progress-file"></h2>
+      <ol class="stages" aria-label="İşlem adımları">
+        <li data-stage="upload">Yükleniyor</li>
+        <li data-stage="queued">Sırada</li>
+        <li data-stage="processing">Özetleniyor</li>
+        <li data-stage="done">Hazır</li>
+      </ol>
+      <div class="meter" role="progressbar" aria-label="Yükleme" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+      <p id="progress-status" class="progress-status" aria-live="polite"></p>
+      <p id="cold-start" class="progress-hint" hidden>İlk istekte model belleğe yükleniyor; bu yalnızca bir kez olur ve bir dakikayı bulabilir.</p>
+      <button id="cancel" class="button button-quiet" type="button">Vazgeç</button>
+    </section>
+
+    <!-- Sonuç -->
+    <article id="result" class="result" aria-labelledby="result-title" hidden>
+      <header class="result-head">
+        <h2 id="result-title" class="result-file"></h2>
+        <p id="result-facts" class="result-facts"></p>
+      </header>
+
+      <div id="warnings" class="notice notice-warn" hidden></div>
+
+      <section class="summary" aria-labelledby="summary-title">
+        <h3 id="summary-title" class="visually-hidden">Özet</h3>
+        <p id="summary-text" class="summary-text"></p>
+        <div class="actions">
+          <button id="copy" class="button" type="button">Özeti kopyala</button>
+          <button id="download" class="button button-quiet" type="button">Markdown olarak indir</button>
+          <button id="again" class="button button-quiet" type="button">Yeni PDF yükle</button>
+        </div>
+        <p id="copy-status" class="copy-status" aria-live="polite"></p>
+      </section>
+
+      <section id="keywords-block" class="keywords" aria-labelledby="keywords-title">
+        <h3 id="keywords-title">Anahtar kelimeler</h3>
+        <ul id="keywords" class="keyword-list"></ul>
+      </section>
+
+      <section class="sections" aria-labelledby="sections-title">
+        <h3 id="sections-title">Bölüm bölüm</h3>
+        <p class="sections-lede">Belge model penceresine sığan parçalara bölündü. Her parçanın başı solda, modelin o parça için yazdığı özet sağda.</p>
+        <ol id="section-list" class="section-list"></ol>
+      </section>
+    </article>
+  </main>
+
+  <footer class="colophon">
+    <p>Yüklenen PDF işlendikten sonra silinir; sonuç 24 saat sonra kendiliğinden kaybolur. Özetler bir dil modeli tarafından üretilir ve hata içerebilir; kaynağına bakmadan alıntılamayın.</p>
+    <p id="model-name" class="model-name"></p>
+  </footer>
+</body>
+</html>

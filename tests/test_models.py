@@ -339,3 +339,20 @@ class TestKeywords:
         assert "için" not in vocab and "ve" not in vocab  # stopword'ler gerçekten çalışıyor
         assert not any(ch.isdigit() for term in vocab for ch in term)
         assert not any("̇" in term for term in vocab)
+
+
+class TestLeadSummarizer:
+    def test_ilk_cumleler(self):
+        from ozetle.models.summarizer import LeadSummarizer
+
+        s = LeadSummarizer(sentences=2)
+        out = s.summarize_batch(["Bir. İki. Üç.", "Tek cümle"])
+        assert out == ["Bir. İki.", "Tek cümle"]
+        assert s.count_tokens("bir iki") >= 2
+
+    def test_map_reduce_ile(self):
+        from ozetle.models.summarizer import LeadSummarizer
+
+        result = summarize_document([_parca(i) for i in range(5)], LeadSummarizer())
+        assert result.model == "lead-3"
+        assert result.summary.startswith("Parça 0")

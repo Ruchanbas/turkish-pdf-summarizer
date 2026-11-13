@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
 from ozetle.models.loader import LazyModel, check_loading_info
-from ozetle.text.chunk import chunk_text
+from ozetle.text.chunk import chunk_text, heuristic_token_count, split_sentences
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,9 @@ MODELS: dict[str, ModelSpec] = {
 
 DEFAULT_MODEL = "mt5-small"
 
+#: Model gerektirmeyen çıkarımsal taban çizgisi (bkz. :class:`LeadSummarizer`).
+LEAD_MODEL = "lead"
+
 
 def get_spec(key_or_id: str) -> ModelSpec:
     """Katalog anahtarı veya doğrudan Hugging Face kimliği ile model ayarı."""
@@ -90,6 +93,33 @@ def get_spec(key_or_id: str) -> ModelSpec:
         if spec.model_id == key_or_id:
             return spec
     return ModelSpec(key=key_or_id, model_id=key_or_id)
+
+
+# ---------------------------------------------------------------------------
+# Taban çizgisi: ilk cümleler
+# ---------------------------------------------------------------------------
+
+
+class LeadSummarizer:
+    """Her metnin ilk ``sentences`` cümlesini döndüren çıkarımsal özetleyici.
+
+    Haber özetlemede "lead-3" klasik taban çizgisidir; bir model bunu
+    geçemiyorsa çalıştırmaya değmez. Ayrıca hiçbir ML bağımlılığı
+    gerektirmediği için arayüz geliştirme ve hızlı deneme için kullanılır:
+    ``OZETLE_MODEL=lead``.
+    """
+
+    name = "lead-3"
+    max_input_tokens = 450
+
+    def __init__(self, sentences: int = 3) -> None:
+        self._sentences = sentences
+
+    def count_tokens(self, text: str) -> int:
+        return heuristic_token_count(text)
+
+    def summarize_batch(self, texts: Sequence[str]) -> list[str]:
+        return [" ".join(split_sentences(t)[: self._sentences]) for t in texts]
 
 
 # ---------------------------------------------------------------------------
