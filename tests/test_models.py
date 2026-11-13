@@ -356,3 +356,33 @@ class TestLeadSummarizer:
         result = summarize_document([_parca(i) for i in range(5)], LeadSummarizer())
         assert result.model == "lead-3"
         assert result.summary.startswith("Parça 0")
+
+
+class TestTiedToLoaded:
+    class _T:
+        def __init__(self, ptr: int) -> None:
+            self.ptr = ptr
+
+        def data_ptr(self) -> int:
+            return self.ptr
+
+    def test_bellek_paylasan_eksik_bagli_sayilir(self):
+        from ozetle.models.loader import tied_to_loaded
+
+        state = {"shared.weight": self._T(1), "lm_head.weight": self._T(1), "q.weight": self._T(2)}
+        assert tied_to_loaded(state, {"lm_head.weight"}) == {"lm_head.weight"}
+
+    def test_paylasmayan_eksik_gercek_eksiktir(self):
+        from ozetle.models.loader import tied_to_loaded
+
+        state = {"shared.weight": self._T(1), "lm_head.weight": self._T(9)}
+        assert tied_to_loaded(state, {"lm_head.weight", "yok.weight"}) == set()
+
+    def test_paylasimsiz_model_yeniden_baglanmaz(self):
+        from ozetle.models.loader import retie_shared_encoder_decoder
+
+        class Model:
+            class config:  # noqa: N801
+                tie_encoder_decoder = False
+
+        assert retie_shared_encoder_decoder(Model(), {"decoder.x"}) == set()

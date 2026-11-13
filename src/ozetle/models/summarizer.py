@@ -20,7 +20,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
-from ozetle.models.loader import LazyModel, check_loading_info
+from ozetle.models.loader import (
+    LazyModel,
+    check_loading_info,
+    retie_shared_encoder_decoder,
+    tied_to_loaded,
+)
 from ozetle.text.chunk import chunk_text, heuristic_token_count, split_sentences
 
 logger = logging.getLogger(__name__)
@@ -148,7 +153,9 @@ def load_seq2seq(model_id: str) -> tuple[Any, Any]:
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model, info = AutoModelForSeq2SeqLM.from_pretrained(model_id, output_loading_info=True)
-    tied = getattr(model, "_tied_weights_keys", None) or []
+    missing = set(info.get("missing_keys", ()))
+    tied = retie_shared_encoder_decoder(model, missing)
+    tied |= tied_to_loaded(model.state_dict(), missing - tied)
     check_loading_info(info, model_id=model_id, tied_keys=tied)
     model.eval()
     return tokenizer, model
