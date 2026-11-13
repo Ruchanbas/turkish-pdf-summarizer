@@ -251,7 +251,7 @@ class TestSummarizeDocument:
         result = summarize_document([_parca(i) for i in range(3)], fake)
         assert result.rounds == 1
         assert len(fake.calls) == 1
-        assert result.summary == " ".join(result.partials)  # belge sırasıyla
+        assert result.summary == " ".join(result.partials)  # belge sırasıyla, hepsi noktalı
 
     def test_uzun_toplamda_tek_reduce(self):
         fake = FakeSummarizer(max_input_tokens=100, keep=6)
@@ -531,3 +531,14 @@ class TestKeywordRound2:
         from ozetle.models.keywords import candidate_phrases
 
         assert iyi in candidate_phrases(iyi)
+
+
+def test_noktasiz_not_cumle_olarak_birlesir():
+    """Gerçek modelde görüldü: '...getirmiştir Yüksek devam oranı...'."""
+
+    class Noktasiz(FakeSummarizer):
+        def summarize_batch(self, texts):
+            return ["Program bir araya getirmiştir", "Devam oranı yüksek."]
+
+    result = summarize_document([_parca(0), _parca(1)], Noktasiz())
+    assert result.summary == "Program bir araya getirmiştir. Devam oranı yüksek."

@@ -261,6 +261,20 @@ class SummaryResult:
     warnings: list[str] = field(default_factory=list)
 
 
+def join_notes(notes: Sequence[str]) -> str:
+    """Notları cümle olarak birleştirir.
+
+    Model çıktısı ``max_new_tokens`` sınırında veya noktasız bitebilir;
+    düz birleştirme "…bir araya getirmiştir Yüksek devam oranı…" gibi iki
+    cümleyi tek cümleye yapıştırır. Noktalamasız biten nota nokta eklenir.
+
+    >>> join_notes(["Bir araya getirmiştir", "Devam oranı yüksek."])
+    'Bir araya getirmiştir. Devam oranı yüksek.'
+    """
+    parts = [n.strip() for n in notes if n.strip()]
+    return " ".join(p if p[-1] in ".!?…" else p + "." for p in parts)
+
+
 #: Bir özetin okunabilir uzunluğu (kelime). Parça özetlerinin toplamı bunu
 #: aşmıyorsa ek model turu yapılmaz.
 DEFAULT_TARGET_WORDS = 120
@@ -308,7 +322,7 @@ def summarize_document(
                 f"Özet {max_rounds} turda tek parçaya inmedi; son tur özetleri birleştirildi."
             )
             break
-        joined = " ".join(texts)
+        joined = join_notes(texts)
         if summarizer.count_tokens(joined) <= budget:
             texts = summarizer.summarize_batch([joined])
         else:
@@ -323,7 +337,7 @@ def summarize_document(
         rounds += 1
         logger.debug("Reduce turu %d: %d özet", rounds, len(texts))
 
-    summary = " ".join(texts)
+    summary = join_notes(texts)
     if not summary:
         warnings.append("Model boş özet üretti.")
     return SummaryResult(
