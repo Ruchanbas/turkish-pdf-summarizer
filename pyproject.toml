@@ -106,5 +106,6 @@ files = ["src"]
 module = [
     "torch", "torch.*", "transformers", "transformers.*", "keybert", "keybert.*",
     "sklearn", "sklearn.*", "boto3", "boto3.*", "botocore", "botocore.*",
+    "huggingface_hub", "huggingface_hub.*",
 ]
 ignore_missing_imports = true

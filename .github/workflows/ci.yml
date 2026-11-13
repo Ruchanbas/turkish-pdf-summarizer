@@ -76,3 +76,50 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - name: pytest (gerçek tarayıcı, local API, sahte model)
         run: pytest tests/e2e -v
+
+  infra:
+    name: Terraform (fmt + validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.10"
+      - run: terraform fmt -check -recursive -diff infra
+      - name: validate (uygulama)
+        run: terraform -chdir=infra init -backend=false -input=false && terraform -chdir=infra validate
+      - name: validate (bootstrap)
+        run: terraform -chdir=infra/bootstrap init -backend=false -input=false && terraform -chdir=infra/bootstrap validate
+
+  packaging:
+    name: Packaging (API zip, Docker images)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: scripts/build_api_zip.sh dist/api.zip
+      - name: API paketi kendi başına içe aktarılır, ağır bağımlılık yok
+        run: |
+          cd "$(mktemp -d)" && unzip -q "$GITHUB_WORKSPACE/dist/api.zip"
+          python -I -c "
+          import sys; sys.path.insert(0, '.')
+          import ozetle.service.lambda_api
+          heavy = {'pdfplumber', 'torch', 'transformers'} & set(sys.modules)
+          assert not heavy, heavy
+          print('API paketi tamam')"
+      - uses: docker/setup-buildx-action@v3
+      - name: Worker imajı (modelsiz derleme)
+        run: |
+          docker buildx build --platform linux/amd64 --provenance=false -f Dockerfile.worker \
+            --build-arg DOWNLOAD_MODELS=0 -t ozetle-worker:ci --load .
+          docker run --rm --entrypoint python ozetle-worker:ci -c \
+            "import ozetle.service.lambda_worker as w; print('handler:', w.handler.__name__)"
+      - name: Local imaj ayağa kalkar ve arayüzü sunar
+        run: |
+          docker buildx build -t ozetle:ci --load .
+          docker run -d --name ozetle -p 8000:8000 -e OZETLE_MODEL=lead ozetle:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8000/api/health && break; sleep 2; done
+          curl -fsS localhost:8000/ | grep -q "ozetle"
+          docker logs ozetle | tail -5

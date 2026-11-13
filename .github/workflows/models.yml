@@ -1,0 +1,45 @@
+name: Models
+
+# Gerçek Hugging Face modelleriyle duman testi. Haftalık çalışır: bir model
+# kaldırılır veya transformers'ın yeni sürümü yüklemeyi bozarsa, bunu
+# kullanıcıdan önce bu iş fark eder.
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Katalog anahtarı
+        default: mt5-small
+  schedule:
+    - cron: "17 4 * * 1"
+  pull_request:
+    paths:
+      - src/ozetle/models/**
+      - .github/workflows/models.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OZETLE_MODEL: ${{ inputs.model || 'mt5-small' }}
+      HF_HUB_DISABLE_PROGRESS_BARS: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-smoke-${{ env.OZETLE_MODEL }}-v1
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[dev,models]"
+      - name: İndir ve katı yüklemeyle doğrula (imaj derlemesindeki adımın aynısı)
+        run: python -m ozetle.models.download --model "$OZETLE_MODEL"
+      - name: Gerçek modelle uçtan uca
+        run: pytest -m model -v -s
