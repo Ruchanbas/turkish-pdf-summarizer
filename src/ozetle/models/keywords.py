@@ -46,6 +46,11 @@ TURKISH_STOPWORDS: frozenset[str] = frozenset({
     "sonra", "şey", "şimdi", "şu", "şuna", "şunu", "tarafından", "tüm", "üzere", "var",
     "vardır", "ve", "veya", "ya", "yani", "yapılan", "yapılmıştır", "yine", "yok", "zaten",
     "aynı", "arasında", "ayrıca", "bulunan", "fakat", "iki", "ilk", "son", "yeni", "üç",
+    # Gerçek çıktıda görülen edat ve bağlaçlar ("hangi egzersiz", "ağrı arasındaki")
+    "hangi", "arasındaki", "içinde", "içindeki", "üzerinde", "üzerindeki", "sırasında",
+    "boyunca", "yönelik", "ilişkin", "dair", "rağmen", "itibaren", "dolayısıyla",
+    "özellikle", "yaklaşık", "şekilde", "biçimde", "ölçüde", "oranında", "dört", "beş",
+    "altı", "yedi", "sekiz", "dokuz", "yüzde",
 })
 # fmt: on
 
@@ -70,9 +75,15 @@ _ANY_WORD = re.compile(r"[^\W_]+")
 
 
 def _keep(word: str) -> bool:
+    """Aday olabilir mi: kısaltma, stopword, çekimli fiil ve hal ekli kelime olamaz.
+
+    Hal ekli kelime ("yetişkinlerde", "ağrıyı") tek başına da zayıf bir
+    anahtar kelimedir; dizide yer alamadığı için iki yanındaki kelimeleri
+    de ikili olmaktan ayırır.
+    """
     if len(word) < 3 or not word.isalpha() or word in TURKISH_STOPWORDS:
         return False
-    return not (len(word) > 5 and _VERB_FORM.search(word))
+    return not (len(word) > 5 and (_VERB_FORM.search(word) or _CASE_MARKED.search(word)))
 
 
 #: İkili ifadede yer alamayan hal ekleri: tamlayan (-nın), bulunma/ayrılma
@@ -84,11 +95,13 @@ def _keep(word: str) -> bool:
 #: Bulunma/ayrılma eki ses uyumuna göre: ünlüden ve yumuşak ünsüzden sonra
 #: -da/-de, sert ünsüzden (ç f h k p s ş t) sonra -ta/-te. Bu yüzden
 #: ünlü + "te" ile biten "aktivite", "kapasite", "kalite" ek sanılmaz.
-_CASE_MARKED = re.compile(r"(?:n[ıiuü]n|[^çfhkpsşt]d[ae]n?|[çfhkpsşt]t[ae]n?|y[ıiuü]|y[ae])$")
-
-
-def _can_pair(word: str) -> bool:
-    return not (len(word) > 5 and _CASE_MARKED.search(word))
+#: Ayrıca gerçek çıktıda görülenler: ilgi -deki ("kuvvetindeki"), vasıta
+#: -le/-yle ("değişimle"; ünlüden sonraki -le değil: "makale"), iyelikten
+#: sonra belirtme -ini ("kapasitesini").
+_CASE_MARKED = re.compile(
+    r"(?:n[ıiuü]n|[^çfhkpsşt]d[ae]n?|[çfhkpsşt]t[ae]n?|y[ıiuü]|y[ae]"
+    r"|[dt][ae]ki|[^aeıioöuü]l[ae]|yl[ae]|[ıiuü]n[ıiuü])$"
+)
 
 
 def candidate_phrases(text: str) -> list[str]:
@@ -111,7 +124,7 @@ def candidate_phrases(text: str) -> list[str]:
                 run.append(word)
                 continue
             out.extend(run)
-            out.extend(f"{a} {b}" for a, b in pairwise(run) if _can_pair(a) and _can_pair(b))
+            out.extend(f"{a} {b}" for a, b in pairwise(run))
             run = []
     return out
 

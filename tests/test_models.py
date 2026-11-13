@@ -243,9 +243,19 @@ class TestSummarizeDocument:
         assert len(fake.calls) == 1
         assert result.model == "fake"
 
-    def test_kucuk_birlesim_tek_reduce(self):
+    def test_kisa_toplamda_reduce_yapilmaz(self):
+        """Regresyon (gerçek modelde görüldü): iki iyi bölüm notu yeniden
+        özetlenince model birini atıp diğerini çarpıtarak yeniden yazdı.
+        Notlar zaten özet uzunluğundaysa ek model turu yapılmaz."""
         fake = FakeSummarizer(max_input_tokens=100, keep=6)
         result = summarize_document([_parca(i) for i in range(3)], fake)
+        assert result.rounds == 1
+        assert len(fake.calls) == 1
+        assert result.summary == " ".join(result.partials)  # belge sırasıyla
+
+    def test_uzun_toplamda_tek_reduce(self):
+        fake = FakeSummarizer(max_input_tokens=100, keep=6)
+        result = summarize_document([_parca(i) for i in range(3)], fake, target_words=10)
         assert result.rounds == 2
         assert len(result.partials) == 3
         assert len(fake.calls[1]) == 1  # birleşim tek seferde özetlendi
@@ -254,7 +264,7 @@ class TestSummarizeDocument:
     def test_buyuk_birlesim_yeniden_parcalanir(self):
         # 40 parça x 7 kelime = 280 kelime > pencere (50) → reduce'ta yeniden parçalama
         fake = FakeSummarizer(max_input_tokens=50, keep=6)
-        result = summarize_document([_parca(i) for i in range(40)], fake)
+        result = summarize_document([_parca(i) for i in range(40)], fake, target_words=10)
         assert result.rounds >= 3
         assert len(fake.calls[1]) > 1
         assert all(fake.count_tokens(t) <= 50 for call in fake.calls[1:] for t in call)
@@ -262,7 +272,9 @@ class TestSummarizeDocument:
 
     def test_tur_siniri(self):
         fake = FakeSummarizer(max_input_tokens=50, keep=6)
-        result = summarize_document([_parca(i) for i in range(40)], fake, max_rounds=2)
+        result = summarize_document(
+            [_parca(i) for i in range(40)], fake, max_rounds=2, target_words=10
+        )
         assert result.rounds == 2
         assert any("2 turda" in w for w in result.warnings)
 
@@ -496,6 +508,26 @@ class TestPairFilter:
     )  # fmt: skip
     def test_gecerli_ikili_korunur(self, iyi):
         """'aktivite' ünlü + -te ile biter ama bulunma eki değildir (ses uyumu)."""
+        from ozetle.models.keywords import candidate_phrases
+
+        assert iyi in candidate_phrases(iyi)
+
+
+class TestKeywordRound2:
+    """Ekran görüntüsü koşusunda gerçek modelle görülen adaylar."""
+
+    @pytest.mark.parametrize(
+        "olmamali",
+        ["hangi egzersiz", "ağrı arasındaki", "kuvvetindeki değişimle", "yürüme kapasitesini",
+         "yetişkinlerde", "ağrıyı"],
+    )  # fmt: skip
+    def test_elenir(self, olmamali):
+        from ozetle.models.keywords import candidate_phrases
+
+        assert olmamali not in candidate_phrases(olmamali)
+
+    @pytest.mark.parametrize("iyi", ["makale yazımı", "klinik kılavuzlar", "yürüme kapasitesi"])
+    def test_korunur(self, iyi):
         from ozetle.models.keywords import candidate_phrases
 
         assert iyi in candidate_phrases(iyi)

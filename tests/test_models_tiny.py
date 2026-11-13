@@ -129,7 +129,8 @@ def test_uctan_uca_map_reduce(tiny_model: Path, tmp_path: Path) -> None:
     doc = prepare(pdf, max_tokens=112, token_counter=summarizer.count_tokens)
     assert len(doc.chunks) > 1
     assert all(summarizer.count_tokens(c.text) <= 128 for c in doc.chunks)
-    result = summarize_document([c.text for c in doc.chunks], summarizer)
+    # target_words küçük: reduce yolu gerçek tokenizer ile sınansın.
+    result = summarize_document([c.text for c in doc.chunks], summarizer, target_words=5)
     assert len(result.partials) == len(doc.chunks)
     assert result.rounds >= 2
     assert result.summary
