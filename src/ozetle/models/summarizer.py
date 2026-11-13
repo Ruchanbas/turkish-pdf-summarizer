@@ -1,14 +1,21 @@
 """Özetleme: Hugging Face seq2seq modelleri ve uzun belge için map-reduce.
 
-Model penceresi (512 token) bir makalenin küçük bir kısmını taşır. Uzun belge
-şöyle özetlenir:
+Model penceresi (512-768 token) bir makalenin küçük bir kısmını taşır. Uzun
+belge şöyle özetlenir:
 
-    parçalar ──map──▶ parça özetleri ──reduce──▶ tek özet
+    parçalar ──map──▶ parça özetleri ──(gerekirse) reduce──▶ özet
 
-Reduce adımında parça özetleri birleştirilir. Birleşim pencereye sığıyorsa
-son bir özet üretilir; sığmıyorsa birleşim yeniden parçalanıp aynı işlem
-tekrarlanır. Her tur metni kısalttığı için birkaç turda biter;
-``max_rounds`` yine de bir üst sınır koyar.
+Reduce **yalnızca gerektiğinde** yapılır: parça özetlerinin toplamı zaten
+bir özet uzunluğundaysa (``target_words``) olduğu gibi birleştirilir. Neden:
+haber verisiyle eğitilmiş, tek belge için yapılmış bir model, kendi
+yazdığı iki notu birleştirip yeniden özetlerken birini atıp diğerini
+yeniden yazıyor. Örnek makalede nihai özet yalnızca ikinci bölümden geldi
+ve bir sınırlılığı ("katılımcıların tek merkezden seçilmesi") bir öneriye
+çevirdi. Her ek tur bilgi kaybı ve uydurma riskidir; kısa belgede gereksiz.
+
+Toplam uzunsa birleşim pencereye sığdığında bir kez daha özetlenir,
+sığmadığında yeniden parçalanıp aynı işlem tekrarlanır. ``max_rounds`` bir
+üst sınır koyar.
 """
 
 from __future__ import annotations
@@ -254,12 +261,18 @@ class SummaryResult:
     warnings: list[str] = field(default_factory=list)
 
 
+#: Bir özetin okunabilir uzunluğu (kelime). Parça özetlerinin toplamı bunu
+#: aşmıyorsa ek model turu yapılmaz.
+DEFAULT_TARGET_WORDS = 120
+
+
 def summarize_document(
     chunks: Sequence[str],
     summarizer: Summarizer,
     *,
     max_rounds: int = 4,
     budget_margin: int = 16,
+    target_words: int = DEFAULT_TARGET_WORDS,
 ) -> SummaryResult:
     """Parçalardan tek bir özet üretir (map-reduce).
 
@@ -270,6 +283,8 @@ def summarize_document(
             birleştirilip döndürülür ve uyarı eklenir.
         budget_margin: Reduce parçalamasında pencereden bırakılan pay
             (önek ve özel tokenlar için).
+        target_words: Parça özetlerinin toplamı bundan kısaysa reduce
+            yapılmaz; notlar belge sırasıyla birleştirilir.
 
     Raises:
         ValueError: Parça yoksa.
@@ -284,7 +299,10 @@ def summarize_document(
     rounds = 1
     budget = max(32, summarizer.max_input_tokens - budget_margin)
 
-    while len(texts) > 1:
+    def words(items: list[str]) -> int:
+        return sum(len(t.split()) for t in items)
+
+    while len(texts) > 1 and words(texts) > target_words:
         if rounds >= max_rounds:
             warnings.append(
                 f"Özet {max_rounds} turda tek parçaya inmedi; son tur özetleri birleştirildi."
