@@ -136,3 +136,34 @@ class TestClean:
         """'Tablo', 'Şekil' gibi kelimeler kör silinmez."""
         metin = "Tablo 1 ve Şekil 2 karşılaştırıldı."
         assert clean(metin) == metin
+
+
+class TestHeadings:
+    GOVDE = "Bu çalışmada diz osteoartriti tanısı almış yetişkinlerde on iki haftalık"
+
+    def test_noktalamasiz_baslik_ayri_paragraf(self) -> None:
+        metin = f"Özet\n{self.GOVDE}\nprogram incelenmiştir.\nYöntem\nÇalışmaya katılmıştır."
+        assert unwrap_lines(metin).split("\n\n") == [
+            "Özet",
+            f"{self.GOVDE} program incelenmiştir.",
+            "Yöntem",
+            "Çalışmaya katılmıştır.",
+        ]
+
+    def test_uzun_govde_satiri_ozel_isimle_devam_etse_bolunmez(self) -> None:
+        metin = f"{self.GOVDE} programı Ankara'da\nAnkara Üniversitesi hastanesinde yürütüldü."
+        assert "\n\n" not in unwrap_lines(metin)
+
+    def test_noktayla_biten_kisa_satir_baslik_degildir(self) -> None:
+        metin = f"{self.GOVDE} çalışma.\nKısa son satır.\nYeni paragraf başlıyor burada."
+        assert "\n\n" not in unwrap_lines(metin)
+
+    def test_kucuk_harfle_baslayan_kisa_satir_baslik_degildir(self) -> None:
+        metin = f"{self.GOVDE} programın ağrı ve işlev\nüzerine etkisi\nÖzet\nBu çalışma."
+        assert unwrap_lines(metin).split("\n\n")[0].endswith("üzerine etkisi")
+
+    def test_cumle_bolme_baslikta_ayrilir(self) -> None:
+        from ozetle.text.chunk import split_sentences
+
+        metin = clean(f"Özet\n{self.GOVDE}\nprogram incelenmiştir.")
+        assert split_sentences(metin)[0] == "Özet"

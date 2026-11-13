@@ -116,15 +116,55 @@ def remove_citation_markers(text: str) -> str:
     return _NUMERIC_CITATION.sub("", text)
 
 
+#: Başlık satırı bununla bitmez: noktalama varsa satır bir cümlenin sonudur.
+_NOT_HEADING_END = ".!?:;,-\u2013…\"'»)"
+
+
+def _is_heading(line: str, next_line: str, typical: float) -> bool:
+    """Satır, noktalamasız bir bölüm başlığı mı ("Yöntem", "Bulgular").
+
+    PDF'lerde başlıklar çoğu zaman noktasızdır; satırlar birleştirilince
+    "...etkisi Özet Bu çalışmada..." gibi tek cümleye yapışırlar ve cümle
+    bölme bozulur. Başlık sayılmak için satır: kısa (belgenin tipik satır
+    uzunluğunun yarısından az), büyük harfle başlıyor, noktalamayla
+    bitmiyor ve sonraki satır büyük harfle başlıyor olmalı. Uzun gövde
+    satırı, sonraki satır özel isimle başlasa bile başlık sayılmaz.
+    """
+    stripped = line.strip()
+    return (
+        0 < len(stripped) <= max(30.0, 0.5 * typical)
+        and stripped[0].isupper()
+        and stripped[-1] not in _NOT_HEADING_END
+        and next_line[:1].isupper()
+    )
+
+
 def unwrap_lines(text: str) -> str:
     """PDF'in görsel satır kırılmalarını kaldırır, paragrafları korur.
 
     Tek satır sonu → boşluk. Boş satır → paragraf sınırı (``\\n\\n``).
+    Noktalamasız başlıklar kendi paragrafı olur (bkz. :func:`_is_heading`).
     Parçalayıcı paragraf sınırını cümle sınırı olarak kullanır.
     """
-    paragraphs = _PARAGRAPH_BREAK.split(text)
-    joined = (" ".join(line.strip() for line in p.splitlines()) for p in paragraphs)
-    return "\n\n".join(p for p in joined if p.strip())
+    lengths = sorted(len(ln.strip()) for ln in text.splitlines() if ln.strip())
+    typical = float(lengths[len(lengths) // 2]) if lengths else 0.0
+
+    out: list[str] = []
+    for paragraph in _PARAGRAPH_BREAK.split(text):
+        lines = [ln.strip() for ln in paragraph.splitlines() if ln.strip()]
+        current: list[str] = []
+        for i, line in enumerate(lines):
+            next_line = lines[i + 1] if i + 1 < len(lines) else ""
+            if _is_heading(line, next_line, typical):
+                if current:
+                    out.append(" ".join(current))
+                    current = []
+                out.append(line)
+            else:
+                current.append(line)
+        if current:
+            out.append(" ".join(current))
+    return "\n\n".join(out)
 
 
 def normalize_whitespace(text: str) -> str:

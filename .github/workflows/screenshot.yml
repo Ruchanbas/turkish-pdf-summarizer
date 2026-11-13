@@ -1,0 +1,42 @@
+name: Screenshot
+
+# README'deki ekran görüntüsünü gerçek modelle üretir ve ayrı bir dala
+# commit'ler. Görüntü elle incelendikten sonra docs/ altına alınır.
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Katalog anahtarı
+        default: mt5-small
+
+permissions:
+  contents: write
+
+jobs:
+  shot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_HUB_DISABLE_PROGRESS_BARS: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[api,models,dev]" playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python scripts/make_sample_pdf.py docs/ornek-makale.pdf
+      - run: python scripts/screenshot.py --model "${{ inputs.model }}" --out docs/screenshot.png
+      - name: Görüntüyü ayrı dala commit'le
+        run: |
+          branch="assets/screenshot-${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add docs/screenshot.png
+          git commit -m "Ekran görüntüsü (${{ inputs.model }}, run ${{ github.run_id }})"
+          git push origin "$branch"
+          echo "Dal: $branch" >> "$GITHUB_STEP_SUMMARY"

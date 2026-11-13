@@ -10,12 +10,19 @@ Eski kodda üç sessiz hata vardı:
 3. KeyBERT'in vektörleştiricisi ``str.lower()`` kullanır. "İçin" → "i̇çin"
    (birleşik nokta) olur ve stopword listesindeki "için" ile eşleşmez.
    Burada Türkçe küçültme ön işlemcisi verilir.
+
+Gerçek modelle ilk denemede bir sorun daha görüldü: "ölçüldü dr", "toplam mg"
+gibi adaylar. Kısaltmalar (iki harf) ve çekimli fiiller ("gözlendi",
+"verilmiştir") anahtar kelime olamaz; :func:`candidate_phrases` bunları eler
+ve metinde gerçekten yan yana durmayan kelimelerden ikili kurmaz.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any, Protocol
 
 from ozetle.models.loader import LazyModel
@@ -43,6 +50,56 @@ TURKISH_STOPWORDS: frozenset[str] = frozenset({
 # fmt: on
 
 
+_WORD = re.compile(r"[^\W\d_]{3,}")
+
+#: Çekimli fiil sonları. Bilinçli olarak dar tutuldu: Türkçede isimler de
+#: -ti/-di ile bitebilir ("kas kuvveti", "beklenti", "kültür"); bunlar
+#: elenirse en değerli anahtar kelimeler kaybolur. Yalnızca fiile özgü
+#: biçimler yakalanır:
+#:   yapılmış(tır) · artmaktadır · artıyor · ölçüldü / bulundu / verildi ·
+#:   gözlendi · gösterdi · azalttı · önemlidir
+_VERB_FORM = re.compile(
+    r"(?:m[ıiuü]ş(?:t[ıiuü]r)?|m[ae]kt[ae]d[ıi]r|[ıiuü]yor(?:du|dı|lar)?"
+    r"|[ıiuü][lnr]d[ıiuü]|l[ae]nd[ıi]|[ae]rd[ıi]|tt[ıiuü]|d[ıiuü]r)$"
+)
+
+
+#: Cümle ve öbek sınırları: ikili ifadeler bunları aşamaz.
+_BOUNDARY = re.compile(r"[.!?;:,()\[\]\"«»/]+")
+_ANY_WORD = re.compile(r"[^\W_]+")
+
+
+def _keep(word: str) -> bool:
+    if len(word) < 3 or not word.isalpha() or word in TURKISH_STOPWORDS:
+        return False
+    return not (len(word) > 5 and _VERB_FORM.search(word))
+
+
+def candidate_phrases(text: str) -> list[str]:
+    """Anahtar kelime adayları: tek kelimeler ve **gerçekten yan yana** ikililer.
+
+    scikit-learn'ün n-gram üreticisi stopword'leri attıktan sonra kalan
+    kelimeleri birleştirir; aradaki fiil elenince cümle sınırının iki yanı
+    yan yana düşer ve "sonuçları ortalama" gibi metinde hiç geçmeyen ikililer
+    doğar. Burada ikili yalnızca aynı cümle öbeğinde, arada elenen kelime
+    olmadan yan yana duran iki aday kelimeden kurulur.
+
+    >>> candidate_phrases("Kas kuvveti ölçüldü. Sonuçlar gözlendi; dr mg")
+    ['kas', 'kuvveti', 'kas kuvveti', 'sonuçlar']
+    """
+    out: list[str] = []
+    for segment in _BOUNDARY.split(turkish_lower(text)):
+        run: list[str] = []
+        for word in [*_ANY_WORD.findall(segment), ""]:
+            if word and _keep(word):
+                run.append(word)
+                continue
+            out.extend(run)
+            out.extend(f"{a} {b}" for a, b in pairwise(run))
+            run = []
+    return out
+
+
 @dataclass(frozen=True, slots=True)
 class Keyword:
     phrase: str
@@ -54,15 +111,10 @@ class KeywordExtractor(Protocol):
 
 
 def _turkish_vectorizer() -> Any:
-    """Türkçe küçültme yapan n-gram vektörleştirici (scikit-learn)."""
+    """Adayları :func:`candidate_phrases` ile üreten vektörleştirici (scikit-learn)."""
     from sklearn.feature_extraction.text import CountVectorizer
 
-    return CountVectorizer(
-        ngram_range=(1, 2),
-        preprocessor=turkish_lower,
-        stop_words=sorted(TURKISH_STOPWORDS),
-        token_pattern=r"(?u)\b[^\W\d_]{2,}\b",  # yalnızca harflerden oluşan kelimeler
-    )
+    return CountVectorizer(analyzer=candidate_phrases, lowercase=False)
 
 
 def _load_keybert(model_name: str) -> Any:
