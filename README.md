@@ -12,7 +12,7 @@ Upload a Turkish academic PDF and get back a summary, keywords, and a section-by
 
 ![ozetle summarizing the sample article](docs/screenshot.png)
 
-<sub>Real output from mT5-small on [`docs/ornek-makale.pdf`](docs/ornek-makale.pdf), a fictional article written for this repo. The screenshot is produced by [`screenshot.yml`](.github/workflows/screenshot.yml) in a real browser against the real model.</sub>
+<sub>Unedited output from mT5-small on [`docs/ornek-makale.pdf`](docs/ornek-makale.pdf), a fictional article written for this repo, produced by [`screenshot.yml`](.github/workflows/screenshot.yml) in a real browser against the real model. Look at section 2: the source says the study's participants came from a single centre (a limitation), while the model's note says *experts* from a single centre are *recommended*. That is why every note sits next to its source. Abstractive models invent things, and this layout lets the reader catch it.</sub>
 
 ## Contents
 
@@ -75,27 +75,28 @@ Each candidate runs through **the production code path**: the same chunker, the 
 
 MLSUM-TR test set, 100 articles (seed 42), CPU on a GitHub-hosted runner:
 
-| Model | Params | ROUGE-1 | ROUGE-2 | ROUGE-L | BERTScore F1 | p50 / article | p95 / article | Load |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| [TURNA](https://huggingface.co/boun-tabi-LMG/turna_summarization_mlsum) | 1142M | **40.49** | **27.75** | **37.04** | **68.44** | 7.5 s | 31.9 s | 48.6 s |
-| [mT5-small](https://huggingface.co/ozcangundes/mt5-small-turkish-summarization) | 300M | 39.12 | 27.08 | 35.29 | 67.04 | 3.5 s | 10.6 s | 23.8 s |
-| [mT5-base](https://huggingface.co/mukayese/mt5-base-turkish-summarization) | 582M | 37.98 | 25.10 | 34.32 | 67.05 | 8.2 s | 23.6 s | 32.2 s |
-| [BERT2BERT](https://huggingface.co/mrm8488/bert2bert_shared-turkish-summarization) ¹ | 140M | 38.56 | 25.65 | 35.22 | 68.38 | **2.2 s** | **8.2 s** | 8.6 s |
-| lead-3 (first three sentences) | – | 33.09 | 20.88 | 27.23 | 63.95 | 0 | 0 | – |
+| Model | Params | ROUGE-1 | ROUGE-2 | ROUGE-L | BERTScore F1 | p50 / article | p95 / article |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| [TURNA](https://huggingface.co/boun-tabi-LMG/turna_summarization_mlsum) | 1142M | **40.04** | **27.45** | **36.49** | 68.07 | 13.7 s | 38.5 s |
+| [mT5-small](https://huggingface.co/ozcangundes/mt5-small-turkish-summarization) | 300M | 39.14 | 26.90 | 35.08 | 66.83 | 3.1 s | 6.1 s |
+| [BERT2BERT](https://huggingface.co/mrm8488/bert2bert_shared-turkish-summarization) ¹ | 140M | 38.26 | 25.54 | 34.86 | **68.15** | **2.5 s** | **6.0 s** |
+| [mT5-base](https://huggingface.co/mukayese/mt5-base-turkish-summarization) | 582M | 37.89 | 24.92 | 33.93 | 66.90 | 9.6 s | 16.0 s |
+| lead-3 (first three sentences of each chunk) | – | 31.03 | 19.47 | 25.78 | 62.71 | 0 | 0 |
 
 <sub>¹ Only loads correctly with the shared-weights fix described [below](#bugs-the-tests-and-the-benchmark-caught). Without it, transformers 5 leaves 198 decoder layers randomly initialized.</sub>
 
 **Decision: mT5-small.**
-- **TURNA is the most accurate but does not fit.** Its weights alone are about 4.6 GB in fp32, beyond the 3008 MB Lambda memory limit on some new AWS accounts. It is also licensed for non-commercial research only. mT5-small reaches 95% of its ROUGE-L at a quarter of the size and half the median latency.
-- **BERT2BERT is a genuine contender.** It ties mT5-small on ROUGE-L, scores higher on BERTScore, and is faster, with half the parameters. It loses on robustness rather than quality: the model card states no license, it loads correctly under transformers 5 only through this repo's re-tying fix, its BERT window is fixed at 512 tokens (mT5 takes 768, so fewer chunks), and its ROUGE-2 is 1.4 points lower. If those risks were acceptable, it would be the faster choice; switching is a one-variable change (`OZETLE_MODEL=bert2bert`).
+- **TURNA is the most accurate but does not fit.** Its weights alone are about 4.6 GB in fp32, beyond the 3008 MB Lambda memory limit on some new AWS accounts. It is also licensed for non-commercial research only. mT5-small reaches 96% of its ROUGE-L at a quarter of the size and under a quarter of the median latency.
+- **BERT2BERT is a genuine contender.** It is 0.2 ROUGE-L behind mT5-small, scores higher on BERTScore, and is slightly faster at the median, with half the parameters. It loses on robustness rather than quality: the model card states no license, it loads correctly under transformers 5 only through this repo's re-tying fix, its BERT window is fixed at 512 tokens (mT5 takes 768, so fewer chunks), and its ROUGE-2 is 1.4 points lower. If those risks were acceptable, it would be the faster choice; switching is a one-variable change (`OZETLE_MODEL=bert2bert`).
 - **Bigger was not better.** mT5-base scored *below* mT5-small on this path.
 
 Every model clears the lead-3 baseline by a wide margin. That baseline is the sanity check: a model that cannot beat "copy the first three sentences" is not worth running.
 
 **Notes on the numbers**
 
-- **ROUGE needs a Turkish tokenizer.** `rouge-score`'s default tokenizer keeps only `[a-z0-9]`. It turns "Çalışmasında İSTANBUL ve Işık" into `al mas nda i stanbul ve i k`: Turkish letters disappear and fragments start matching each other. The benchmark tokenizes with Unicode word boundaries and Turkish lowercasing. The default tokenizer inflates ROUGE-1 by 4.5 to 5 points for every model (lead-3: 38.08 vs 33.09; mT5-small: 44.15 vs 39.12), so scores computed with it are not comparable to these.
-- **Model cards are not comparable either.** mT5-base's card reports ROUGE-1 47.4. That number comes from the training run's own evaluation, not from this pipeline; the default tokenizer alone would account for about 4.6 points of the gap.
+- **ROUGE needs a Turkish tokenizer.** `rouge-score`'s default tokenizer keeps only `[a-z0-9]`. It turns "Çalışmasında İSTANBUL ve Işık" into `al mas nda i stanbul ve i k`: Turkish letters disappear and fragments start matching each other. The benchmark tokenizes with Unicode word boundaries and Turkish lowercasing. The default tokenizer inflates ROUGE-1 by 4.6 to 5.7 points for every model (mT5-small: 44.49 vs 39.14), so scores computed with it are not comparable to these.
+- **Skipping the reduce step has a measured price.** The table above is the second run. In the first, every multi-chunk document was re-summarized. Joining the section notes instead (see below for why) cost the models 0.2 to 0.6 ROUGE-L (1.5 for lead-3), most likely because MLSUM's references are short and joined notes are longer. Between the two runs, mT5-small's p95 latency went from 10.6 s to 6.1 s; some of that is runner variance, but the skipped model pass is real. ROUGE cannot see the failure the change prevents: an accurate note being thrown away.
+- **Model cards are not comparable either.** mT5-base's card reports ROUGE-1 47.4. That number comes from the training run's own evaluation, not from this pipeline; the default tokenizer alone accounts for about 5 points of the gap.
 - **The TURNA input prefix was measured, not guessed.** TURNA has no model card, so `bench/run.py prefix` compared `""`, `"[S2S] "` and `"[S2S]"` on the same 8 articles. ROUGE-L came out at 25.87, 24.98 and 25.89, which is noise; the simplest option was kept.
 - **Abstractive models invent details.** In the prefix test, TURNA placed an incident from Pamukkale in "Merkezefendi" and then "Serik", two districts the article never mentions. This is why the interface tells readers to check the source before quoting.
 
@@ -110,7 +111,7 @@ Each bug below has a regression test.
 | **The fixtures weren't testing Turkish.** reportlab's Helvetica cannot encode `ı ş ğ İ`, so "yapılmıştır" went into the test PDFs already broken and the tests still passed. The fixtures now embed DejaVu Sans. The same discovery led to the encoding guard for user PDFs with non-embedded fonts. | `test_helvetica_turkce_tasiyamaz` |
 | **A false column gutter.** On pages of similar lines, word gaps lined up vertically and the column detector split every line down the middle. Gutters must now be wider than a word gap. | `test_tek_sutunda_yanlis_pozitif_yok` |
 | **Overlap broke the token budget.** The overlap sentence carried into the next chunk was never re-checked against the budget. | `test_ortusme_butceyi_delemez` |
-| **The reduce step distorted good notes.** On the sample article, both section notes were accurate, but re-summarizing them made the model drop the first and rewrite the second. A study limitation, "participants were recruited from a single centre", came out as a recommendation: "experts should be selected from a single centre". The reduce step now runs only when the notes are too long to read as a summary. | `test_kisa_toplamda_reduce_yapilmaz` |
+| **The reduce step threw away the good note.** On the sample article, the first section note was accurate. The second had already turned a study limitation ("participants were recruited from a single centre") into a recommendation ("experts should be selected from a single centre"). Re-summarizing the two made the model drop the accurate note, so the final summary consisted of the distorted one alone. The reduce step now runs only when the notes are too long to read as a summary, and notes are joined as sentences. | `test_kisa_toplamda_reduce_yapilmaz`, `test_noktasiz_not_cumle_olarak_birlesir` |
 | **The tail merge only worked by cheating.** Merging a small last chunk into the previous one only ever succeeded through a 15% tolerance, i.e. by exceeding the budget. Under greedy packing and a hard budget it can never succeed, so it was deleted. | `test_son_parca_butceyi_asmaz` |
 | **Headings glued to sentences, then copied into the summary.** Unpunctuated headings ran into the following text ("…etkisi Özet Bu çalışmada…") and broke sentence splitting. Worse, the news-trained model copied the title into the summary, because a news article's first line is its lead. Headings are now paragraphs of their own and stay out of the model input; keyword extraction still sees them, since a title is the best keyword source. | `TestHeadings`, `test_baslik_ozetleyiciye_gitmez_anahtar_kelimeye_gider` |
 | **Keyword junk.** `stop_words="turkish"` does not exist in scikit-learn, and `str.lower()` turns `İ` into `i̇`. The real model then showed more: abbreviations and verbs ("ölçüldü dr"), n-grams across removed words ("sonuçları ortalama", which appears nowhere in the text), and pairs across phrase boundaries ("etkinin kas", "osteoartritinde ağrıyı"). Pairs now form only from truly adjacent words, never with a case-marked word. Vowel harmony keeps "fiziksel aktivite" intact: after a vowel the locative is always -da/-de, so "aktivite" is not mistaken for one. | `TestCandidatePhrases`, `TestPairFilter` |
@@ -180,7 +181,7 @@ Then run the **Deploy** workflow (or push to `main`). It builds the worker image
 
 ## Quality gates
 
-362 tests (including doctests), 97% branch coverage, `ruff` clean, `mypy --strict` clean. CI runs these jobs on every pull request:
+364 tests (including doctests), 97% branch coverage, `ruff` clean, `mypy --strict` clean. CI runs these jobs on every pull request:
 
 | Job | What it proves |
 |---|---|
@@ -199,6 +200,7 @@ Then run the **Deploy** workflow (or push to `main`). It builds the worker image
 - **News-trained models.** The candidates were fine-tuned on MLSUM news, not academic papers. Quality on academic text has not been benchmarked.
 - **Abstractive models can invent facts** (see the benchmark notes). The UI says so.
 - **The reference cut removes everything after the heading,** including appendices.
+- **A compound hyphen at a line end looks like a hyphenation break.** When "otur-kalk" is split across lines as "otur-" / "kalk", it is joined as "oturkalk" (visible in the screenshot's keywords). In a PDF the two cases are indistinguishable without a dictionary.
 - **Column detection handles at most two columns** and is heuristic.
 - **The local backend keeps jobs in memory,** so they are lost on restart. It is meant for development and demos.
 
