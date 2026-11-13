@@ -75,6 +75,22 @@ def _keep(word: str) -> bool:
     return not (len(word) > 5 and _VERB_FORM.search(word))
 
 
+#: İkili ifadede yer alamayan hal ekleri: tamlayan (-nın), bulunma/ayrılma
+#: (-da, -dan) ve kaynaştırmalı belirtme/yönelme (-yı, -ya). "etkinin kas",
+#: "egzersiz grubunda", "osteoartritinde ağrıyı" gibi ikililer iki ayrı öbeğin
+#: sınırını aşar. Bilinçli olarak dar: ünsüzden sonraki -ın/-in eklenmedi,
+#: çünkü "vitamin", "insülin" gibi isimleri de yakalardı. Tek kelimeler
+#: etkilenmez; 5 harf ve altı ("beden", "kimya") korunur.
+#: Bulunma/ayrılma eki ses uyumuna göre: ünlüden ve yumuşak ünsüzden sonra
+#: -da/-de, sert ünsüzden (ç f h k p s ş t) sonra -ta/-te. Bu yüzden
+#: ünlü + "te" ile biten "aktivite", "kapasite", "kalite" ek sanılmaz.
+_CASE_MARKED = re.compile(r"(?:n[ıiuü]n|[^çfhkpsşt]d[ae]n?|[çfhkpsşt]t[ae]n?|y[ıiuü]|y[ae])$")
+
+
+def _can_pair(word: str) -> bool:
+    return not (len(word) > 5 and _CASE_MARKED.search(word))
+
+
 def candidate_phrases(text: str) -> list[str]:
     """Anahtar kelime adayları: tek kelimeler ve **gerçekten yan yana** ikililer.
 
@@ -95,7 +111,7 @@ def candidate_phrases(text: str) -> list[str]:
                 run.append(word)
                 continue
             out.extend(run)
-            out.extend(f"{a} {b}" for a, b in pairwise(run))
+            out.extend(f"{a} {b}" for a, b in pairwise(run) if _can_pair(a) and _can_pair(b))
             run = []
     return out
 

@@ -23,7 +23,7 @@ from ozetle.limits import MAX_PAGES
 from ozetle.pdf.extract import PdfDocument, extract
 from ozetle.pdf.layout import cut_references, strip_page_furniture
 from ozetle.text.chunk import DEFAULT_MAX_TOKENS, Chunk, TokenCounter, chunk_text
-from ozetle.text.clean import clean
+from ozetle.text.clean import clean, drop_headings
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,9 +104,10 @@ def prepare_document(
     # 3. Normalizasyon — satır yapısını bilinçli olarak yok eder.
     text = clean(joined, remove_citations=remove_citations)
 
-    # 4. Parçalama.
+    # 4. Parçalama. Başlıklar model girdisine girmez (bkz. drop_headings);
+    #    tam metin anahtar kelime çıkarımı için ``text`` olarak kalır.
     chunks = chunk_text(
-        text,
+        drop_headings(text),
         max_tokens=max_tokens,
         overlap_sentences=overlap_sentences,
         token_counter=token_counter,
