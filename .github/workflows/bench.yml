@@ -37,6 +37,8 @@ jobs:
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -e ".[bench]"
       - run: python bench/run.py probe
+      - name: TURNA görev öneki (model kartı yok, ölçerek seç)
+        run: python bench/run.py prefix --model turna --n 8
 
   plan:
     if: github.event_name == 'workflow_dispatch' && !inputs.probe

@@ -137,6 +137,32 @@ def cmd_probe(args: argparse.Namespace) -> None:
         print("ÖZET :", row["summary"][:200])
 
 
+def cmd_prefix(args: argparse.Namespace) -> None:
+    """Model kartı olmayan modeller için görev önekini ölçerek seç.
+
+    Aynı örnekler her önekle özetlenir; ROUGE-L en yüksek olan önek
+    katalogdaki ``ModelSpec.prefix`` değeri olur.
+    """
+    from dataclasses import replace
+
+    from rouge_score import rouge_scorer
+
+    _, rows = load_examples(args.n)
+    scorer = rouge_scorer.RougeScorer(["rougeL"], tokenizer=TurkishTokenizer())
+    base = get_spec(args.model)
+    shared = HFSummarizer(base)
+    shared.warm_up()
+    bundle = shared._bundle.get()
+    for prefix in args.prefixes:
+        s = HFSummarizer(replace(base, prefix=prefix), loader=lambda _id: bundle)
+        outputs = s.summarize_batch([r["text"] for r in rows])
+        score = statistics.fmean(
+            scorer.score(r["summary"], o)["rougeL"].fmeasure
+            for r, o in zip(rows, outputs, strict=True)
+        )
+        print(f"önek={prefix!r:12} ROUGE-L={100 * score:.2f}  örnek: {outputs[0][:160]}")
+
+
 def _summarizer(key: str) -> Any:
     if key == LEAD_MODEL:
         return LeadSummarizer()
@@ -256,6 +282,10 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("probe")
+    prefix = sub.add_parser("prefix")
+    prefix.add_argument("--model", required=True, choices=list(MODELS))
+    prefix.add_argument("--n", type=int, default=8)
+    prefix.add_argument("--prefixes", nargs="+", default=["", "[S2S] ", "[S2S]"])
     run = sub.add_parser("run")
     run.add_argument("--model", required=True, choices=[LEAD_MODEL, *MODELS])
     run.add_argument("--n", type=int, default=100)
@@ -263,7 +293,8 @@ def main() -> None:
     report = sub.add_parser("report")
     report.add_argument("dir")
     args = parser.parse_args()
-    {"probe": cmd_probe, "run": cmd_run, "report": cmd_report}[args.cmd](args)
+    commands = {"probe": cmd_probe, "prefix": cmd_prefix, "run": cmd_run, "report": cmd_report}
+    commands[args.cmd](args)
 
 
 if __name__ == "__main__":
