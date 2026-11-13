@@ -386,3 +386,49 @@ class TestTiedToLoaded:
                 tie_encoder_decoder = False
 
         assert retie_shared_encoder_decoder(Model(), {"decoder.x"}) == set()
+
+
+class TestDownload:
+    def test_safetensors_varsa_bin_indirilmez(self, monkeypatch):
+        hub = pytest.importorskip("huggingface_hub")
+        from ozetle.models import download
+
+        calls = {}
+
+        class FakeApi:
+            def list_repo_files(self, repo_id):
+                return ["config.json", "model.safetensors", "pytorch_model.bin", "tf_model.h5"]
+
+        def fake_snapshot(repo_id, ignore_patterns):
+            calls["ignore"] = ignore_patterns
+            return "/tmp/x"
+
+        monkeypatch.setattr(hub, "HfApi", FakeApi)
+        monkeypatch.setattr(hub, "snapshot_download", fake_snapshot)
+        assert download.fetch("org/m") == "/tmp/x"
+        assert "*.bin" in calls["ignore"] and "*.h5" in calls["ignore"]
+
+    def test_yalniz_bin_varsa_indirilir(self, monkeypatch):
+        hub = pytest.importorskip("huggingface_hub")
+        from ozetle.models import download
+
+        class FakeApi:
+            def list_repo_files(self, repo_id):
+                return ["config.json", "pytorch_model.bin"]
+
+        seen = {}
+        monkeypatch.setattr(hub, "HfApi", FakeApi)
+        monkeypatch.setattr(
+            hub,
+            "snapshot_download",
+            lambda repo_id, ignore_patterns: seen.update(i=ignore_patterns),
+        )
+        download.fetch("org/eski")
+        assert "*.bin" not in seen["i"]
+
+    def test_lead_modu_indirme_yapmaz(self, monkeypatch, capsys):
+        from ozetle.models import download
+
+        monkeypatch.setattr(download, "fetch", lambda repo: pytest.fail("indirmemeli"))
+        download.main(["--model", "lead", "--no-keywords"])
+        assert capsys.readouterr().out == ""

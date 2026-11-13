@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.7
+#
+# Worker Lambda imajı: torch (yalnızca CPU) + model ağırlıkları imajın içinde.
+# Çalışma anında ağdan hiçbir şey indirilmez (HF_HUB_OFFLINE=1).
+#
+#   docker buildx build --platform linux/amd64 --provenance=false \
+#     -f Dockerfile.worker --build-arg MODEL=mt5-small -t ozetle-worker .
+#
+# --provenance=false: Lambda, attestation içeren OCI imaj indekslerini kabul etmez.
+
+FROM public.ecr.aws/lambda/python:3.12
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# CUDA'lı torch ~2.5 GB ek yük getirir; Lambda'da GPU yok.
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+COPY pyproject.toml README.md LICENSE /tmp/build/
+COPY src /tmp/build/src
+RUN pip install "/tmp/build[worker]" && rm -rf /tmp/build
+
+ARG MODEL=mt5-small
+ARG KEYWORD_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+# CI'da Dockerfile'ı hızlıca doğrulamak için indirme kapatılabilir.
+ARG DOWNLOAD_MODELS=1
+
+ENV HF_HOME=/opt/models \
+    OZETLE_MODEL=${MODEL} \
+    OZETLE_KEYWORD_MODEL=${KEYWORD_MODEL}
+
+RUN if [ "$DOWNLOAD_MODELS" = "1" ]; then \
+      python -m ozetle.models.download --model "$MODEL" --keyword-model "$KEYWORD_MODEL"; \
+    fi
+
+# Lambda'da yalnızca /tmp yazılabilir.
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    XDG_CACHE_HOME=/tmp/.cache \
+    TORCH_HOME=/tmp/torch \
+    TOKENIZERS_PARALLELISM=false
+
+CMD ["ozetle.service.lambda_worker.handler"]

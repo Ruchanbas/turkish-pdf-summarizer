@@ -1,0 +1,13 @@
+services:
+  ozetle:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      OZETLE_MODEL: ${OZETLE_MODEL:-mt5-small}
+      OZETLE_KEYWORDS_ENABLED: ${OZETLE_KEYWORDS_ENABLED:-true}
+    volumes:
+      - models:/models
+
+volumes:
+  models:
