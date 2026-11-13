@@ -68,12 +68,16 @@ MODELS: dict[str, ModelSpec] = {
     spec.key: spec
     for spec in (
         ModelSpec("bert2bert", "mrm8488/bert2bert_shared-turkish-summarization"),
-        ModelSpec("mt5-small", "ozcangundes/mt5-small-turkish-summarization"),
+        # Model kartı: eğitimde 784 token girdi. mT5 göreli konum kodlaması
+        # kullandığı için 512 sınırı yok; daha uzun pencere = daha az parça.
+        ModelSpec("mt5-small", "ozcangundes/mt5-small-turkish-summarization", max_input_tokens=768),
         ModelSpec("mt5-base", "mukayese/mt5-base-turkish-summarization"),
+        # Model kartı yok. Önek ölçülerek seçildi (bench/run.py prefix, n=8):
+        # "" 25.87, "[S2S] " 24.98, "[S2S]" 25.89 ROUGE-L — fark gürültü
+        # düzeyinde, en sade olan seçildi.
         ModelSpec(
             "turna",
             "boun-tabi-LMG/turna_summarization_mlsum",
-            prefix="[S2S] ",
             license_note="TURNA yalnızca ticari olmayan akademik kullanım için paylaşılmıştır.",
         ),
     )
