@@ -1,0 +1,274 @@
+"""Özetleme: Hugging Face seq2seq modelleri ve uzun belge için map-reduce.
+
+Model penceresi (512 token) bir makalenin küçük bir kısmını taşır. Uzun belge
+şöyle özetlenir:
+
+    parçalar ──map──▶ parça özetleri ──reduce──▶ tek özet
+
+Reduce adımında parça özetleri birleştirilir. Birleşim pencereye sığıyorsa
+son bir özet üretilir; sığmıyorsa birleşim yeniden parçalanıp aynı işlem
+tekrarlanır. Her tur metni kısalttığı için birkaç turda biter;
+``max_rounds`` yine de bir üst sınır koyar.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import logging
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Protocol, cast
+
+from ozetle.models.loader import LazyModel, check_loading_info
+from ozetle.text.chunk import chunk_text
+
+logger = logging.getLogger(__name__)
+
+
+class Summarizer(Protocol):
+    """Özetleme modelinin arayüzü. Testler sahte bir uygulama kullanır."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def max_input_tokens(self) -> int: ...
+
+    def count_tokens(self, text: str) -> int: ...
+
+    def summarize_batch(self, texts: Sequence[str]) -> list[str]: ...
+
+
+# ---------------------------------------------------------------------------
+# Model kataloğu
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ModelSpec:
+    """Bir özetleme modelinin çalıştırma ayarları."""
+
+    key: str
+    model_id: str
+    max_input_tokens: int = 512
+    prefix: str = ""
+    """Bazı modeller eğitimde bir görev öneki ile beslenmiştir."""
+    max_new_tokens: int = 128
+    num_beams: int = 4
+    no_repeat_ngram_size: int = 3
+    license_note: str = ""
+
+
+#: Faz 2'de karşılaştırılan adaylar. Varsayılan model benchmark sonucuna göre
+#: seçilir (bkz. README → Benchmark).
+MODELS: dict[str, ModelSpec] = {
+    spec.key: spec
+    for spec in (
+        ModelSpec("bert2bert", "mrm8488/bert2bert_shared-turkish-summarization"),
+        ModelSpec("mt5-small", "ozcangundes/mt5-small-turkish-summarization"),
+        ModelSpec("mt5-base", "mukayese/mt5-base-turkish-summarization"),
+        ModelSpec(
+            "turna",
+            "boun-tabi-LMG/turna_summarization_mlsum",
+            prefix="[S2S] ",
+            license_note="TURNA yalnızca ticari olmayan akademik kullanım için paylaşılmıştır.",
+        ),
+    )
+}
+
+DEFAULT_MODEL = "mt5-small"
+
+
+def get_spec(key_or_id: str) -> ModelSpec:
+    """Katalog anahtarı veya doğrudan Hugging Face kimliği ile model ayarı."""
+    if key_or_id in MODELS:
+        return MODELS[key_or_id]
+    for spec in MODELS.values():
+        if spec.model_id == key_or_id:
+            return spec
+    return ModelSpec(key=key_or_id, model_id=key_or_id)
+
+
+# ---------------------------------------------------------------------------
+# Hugging Face uygulaması
+# ---------------------------------------------------------------------------
+
+
+def _inference_mode() -> contextlib.AbstractContextManager[Any]:
+    try:
+        import torch
+    except ImportError:  # pragma: no cover - torch yoksa zaten model de yok
+        return contextlib.nullcontext()
+    return cast("contextlib.AbstractContextManager[Any]", torch.inference_mode())
+
+
+def load_seq2seq(model_id: str) -> tuple[Any, Any]:
+    """Tokenizer ve modeli **katı** biçimde yükler.
+
+    Eksik ağırlık varsa :class:`~ozetle.models.loader.ModelLoadError` yükselir.
+    """
+    from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    model, info = AutoModelForSeq2SeqLM.from_pretrained(model_id, output_loading_info=True)
+    tied = getattr(model, "_tied_weights_keys", None) or []
+    check_loading_info(info, model_id=model_id, tied_keys=tied)
+    model.eval()
+    return tokenizer, model
+
+
+class HFSummarizer:
+    """Hugging Face seq2seq modeli ile özetleyici.
+
+    Tokenizer ve model ayrı ayrı tembel yüklenir: token sayımı (parçalama
+    için) yalnızca küçük tokenizer'ı gerektirir, 1 GB'lık model ilk özet
+    isteğine kadar belleğe girmez.
+    """
+
+    def __init__(
+        self,
+        spec: ModelSpec,
+        *,
+        loader: Callable[[str], tuple[Any, Any]] = load_seq2seq,
+        batch_size: int = 4,
+    ) -> None:
+        self.spec = spec
+        self._batch_size = batch_size
+        self._bundle: LazyModel[tuple[Any, Any]] = LazyModel(
+            lambda: loader(spec.model_id), name=spec.model_id
+        )
+
+    @property
+    def name(self) -> str:
+        return self.spec.model_id
+
+    @property
+    def max_input_tokens(self) -> int:
+        return self.spec.max_input_tokens
+
+    @property
+    def loaded(self) -> bool:
+        return self._bundle.loaded
+
+    @property
+    def load_seconds(self) -> float | None:
+        return self._bundle.load_seconds
+
+    def warm_up(self) -> None:
+        """Modeli şimdi yükler (Lambda soğuk başlangıcında, istekten önce)."""
+        self._bundle.get()
+
+    def count_tokens(self, text: str) -> int:
+        tokenizer, _ = self._bundle.get()
+        ids = tokenizer(self.spec.prefix + text, add_special_tokens=True)["input_ids"]
+        return len(ids)
+
+    def summarize_batch(self, texts: Sequence[str]) -> list[str]:
+        tokenizer, model = self._bundle.get()
+        outputs: list[str] = []
+        for start in range(0, len(texts), self._batch_size):
+            batch = [self.spec.prefix + t for t in texts[start : start + self._batch_size]]
+            encoded = tokenizer(
+                batch,
+                max_length=self.spec.max_input_tokens,
+                truncation=True,
+                padding=True,
+                return_tensors="pt",
+            )
+            # bert2bert gibi encoder-decoder modeller token_type_ids kabul etmez.
+            encoded.pop("token_type_ids", None)
+            with _inference_mode():
+                generated = model.generate(
+                    **encoded,
+                    max_new_tokens=self.spec.max_new_tokens,
+                    num_beams=self.spec.num_beams,
+                    no_repeat_ngram_size=self.spec.no_repeat_ngram_size,
+                    early_stopping=True,
+                )
+            outputs.extend(
+                " ".join(s.split())
+                for s in tokenizer.batch_decode(generated, skip_special_tokens=True)
+            )
+        return outputs
+
+
+# ---------------------------------------------------------------------------
+# Map-reduce
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SummaryResult:
+    summary: str
+    partials: list[str]
+    """Her giriş parçasının özeti (map turu). Arayüzde parçayla yan yana gösterilir."""
+    rounds: int
+    """Toplam model turu. Tek parçalı belge için 1."""
+    model: str
+    seconds: float
+    warnings: list[str] = field(default_factory=list)
+
+
+def summarize_document(
+    chunks: Sequence[str],
+    summarizer: Summarizer,
+    *,
+    max_rounds: int = 4,
+    budget_margin: int = 16,
+) -> SummaryResult:
+    """Parçalardan tek bir özet üretir (map-reduce).
+
+    Args:
+        chunks: :func:`ozetle.pipeline.prepare` çıktısındaki parça metinleri.
+        summarizer: Özetleme modeli.
+        max_rounds: Model turlarının üst sınırı. Aşılırsa son turun özetleri
+            birleştirilip döndürülür ve uyarı eklenir.
+        budget_margin: Reduce parçalamasında pencereden bırakılan pay
+            (önek ve özel tokenlar için).
+
+    Raises:
+        ValueError: Parça yoksa.
+    """
+    if not chunks:
+        raise ValueError("Özetlenecek parça yok")
+
+    started = time.perf_counter()
+    warnings: list[str] = []
+    partials = summarizer.summarize_batch(list(chunks))
+    texts = [p for p in partials if p.strip()]
+    rounds = 1
+    budget = max(32, summarizer.max_input_tokens - budget_margin)
+
+    while len(texts) > 1:
+        if rounds >= max_rounds:
+            warnings.append(
+                f"Özet {max_rounds} turda tek parçaya inmedi; son tur özetleri birleştirildi."
+            )
+            break
+        joined = " ".join(texts)
+        if summarizer.count_tokens(joined) <= budget:
+            texts = summarizer.summarize_batch([joined])
+        else:
+            regrouped = chunk_text(
+                joined,
+                max_tokens=budget,
+                overlap_sentences=0,
+                token_counter=summarizer.count_tokens,
+            )
+            texts = summarizer.summarize_batch([c.text for c in regrouped])
+        texts = [t for t in texts if t.strip()]
+        rounds += 1
+        logger.debug("Reduce turu %d: %d özet", rounds, len(texts))
+
+    summary = " ".join(texts)
+    if not summary:
+        warnings.append("Model boş özet üretti.")
+    return SummaryResult(
+        summary=summary,
+        partials=partials,
+        rounds=rounds,
+        model=summarizer.name,
+        seconds=time.perf_counter() - started,
+        warnings=warnings,
+    )

@@ -77,6 +77,20 @@ def normalize_unicode(text: str) -> str:
     return _COMBINING_DOT_I.sub("i", text)
 
 
+def turkish_lower(text: str) -> str:
+    """Türkçe kurallarıyla küçük harfe çevirir.
+
+    Python'un ``str.lower()`` metodu dilden bağımsızdır: "I" → "i" (Türkçede
+    "ı" olmalı) ve "İ" → "i̇" (i + U+0307 birleşik nokta) üretir. İkincisi
+    özellikle sinsidir: ekranda "i" görünür ama "istanbul" ile eşleşmez,
+    bu yüzden stopword listeleri ve tekrar ayıklama sessizce çalışmaz.
+
+    >>> turkish_lower("İSTANBUL ILIK")
+    'istanbul ılık'
+    """
+    return text.replace("I", "ı").replace("İ", "i").lower()
+
+
 def dehyphenate(text: str) -> str:
     """Satır sonunda bölünmüş kelimeleri birleştirir.
 
