@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Araç önbellekleri
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Yerel deneme dosyaları — kullanıcı PDF'leri repoya girmesin
+/*.pdf
+/ornekler/
+
+# Ortam
+.env
+.DS_Store
+.idea/
+.vscode/
