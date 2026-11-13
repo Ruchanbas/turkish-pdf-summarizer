@@ -16,6 +16,15 @@ dependencies = [
 ]                         # kirletmemesi için tercih edilmedi.
 
 [project.optional-dependencies]
+models = [
+    "torch>=2.2",
+    "transformers>=4.44",
+    "sentencepiece>=0.2",
+    "protobuf>=4.25",     # mT5 tokenizer dönüşümü için
+    "keybert>=0.8",
+    "sentence-transformers>=3.0",
+    "scikit-learn>=1.4",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -33,7 +42,10 @@ packages = ["src/ozetle"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests", "src"]
-addopts = "-q --strict-markers --doctest-modules"
+addopts = "-q --strict-markers --doctest-modules -m 'not model'"
+markers = [
+    "model: gerçek Hugging Face modellerini indirir (yavaş; CI'da models.yml)",
+]
 
 [tool.coverage.run]
 source = ["ozetle"]
@@ -66,3 +78,8 @@ known-first-party = ["ozetle"]
 [tool.mypy]
 strict = true
 files = ["src"]
+
+[[tool.mypy.overrides]]
+# Ağır ML kütüphaneleri yalnızca fonksiyon içinde, tembel içe aktarılır.
+module = ["torch", "torch.*", "transformers", "transformers.*", "keybert", "keybert.*", "sklearn", "sklearn.*"]
+ignore_missing_imports = true
