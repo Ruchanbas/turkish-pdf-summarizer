@@ -26,17 +26,9 @@ from pdfminer.pdfparser import PDFSyntaxError
 from pdfminer.psparser import PSException
 from pdfplumber.utils.exceptions import MalformedPDFException, PdfminerException
 
+from ozetle.limits import MAX_FILE_BYTES, MAX_PAGES
+
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Limitler
-# ---------------------------------------------------------------------------
-
-#: Okunacak azami sayfa. Daha uzun belgeler kesilir ve kullanıcı uyarılır.
-MAX_PAGES = 60
-
-#: Kabul edilen azami dosya boyutu.
-MAX_FILE_BYTES = 20 * 1024 * 1024
 
 _LINE_TOLERANCE = 3.0
 """Aynı satır sayılmak için dikey tolerans (punto)."""

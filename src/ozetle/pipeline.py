@@ -19,7 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ozetle.pdf.extract import MAX_PAGES, PdfDocument, extract
+from ozetle.limits import MAX_PAGES
+from ozetle.pdf.extract import PdfDocument, extract
 from ozetle.pdf.layout import cut_references, strip_page_furniture
 from ozetle.text.chunk import DEFAULT_MAX_TOKENS, Chunk, TokenCounter, chunk_text
 from ozetle.text.clean import clean

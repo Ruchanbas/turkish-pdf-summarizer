@@ -15,9 +15,9 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ozetle.limits import MAX_FILE_BYTES, MAX_PAGES
 from ozetle.models.keywords import DEFAULT_EMBEDDING_MODEL
 from ozetle.models.summarizer import DEFAULT_MODEL
-from ozetle.pdf.extract import MAX_FILE_BYTES, MAX_PAGES
 
 
 class Settings(BaseSettings):
