@@ -67,7 +67,7 @@ The stage order matters:
 2. Finding the reference heading needs line breaks, so it runs before lines are unwrapped.
 3. Cleaning runs last, because it deliberately destroys line structure.
 
-Long documents use map-reduce. Each chunk is summarized first. If the partial summaries together are already summary-length (up to 120 words), they are joined in document order and the reduce step is skipped. That decision came from real output (see below): each extra model pass loses information and invites invention. Only longer documents are reduced. When the joined partials fit the model window they are summarized once more; otherwise they are re-chunked and the step repeats.
+Long documents use map-reduce. Each chunk is summarized first. If the partial summaries together are already summary-length (up to 120 words), they are joined in document order and the reduce step is skipped. That decision came from real output (see below): an extra model pass over good notes can throw one of them away. Only longer documents are reduced. When the joined partials fit the model window they are summarized once more; otherwise they are re-chunked and the step repeats.
 
 ## Choosing the model: benchmark
 
@@ -86,7 +86,7 @@ MLSUM-TR test set, 100 articles (seed 42), CPU on a GitHub-hosted runner:
 <sub>¹ Only loads correctly with the shared-weights fix described [below](#bugs-the-tests-and-the-benchmark-caught). Without it, transformers 5 leaves 198 decoder layers randomly initialized.</sub>
 
 **Decision: mT5-small.**
-- **TURNA is the most accurate but does not fit.** Its weights alone are about 4.6 GB in fp32, beyond the 3008 MB Lambda memory limit on some new AWS accounts. It is also licensed for non-commercial research only. mT5-small reaches 96% of its ROUGE-L at a quarter of the size and under a quarter of the median latency.
+- **TURNA is the most accurate but does not fit.** Its weights alone are about 4.6 GB in fp32, beyond the 3008 MB Lambda memory limit on some new AWS accounts. The base TURNA model is also shared solely for non-commercial academic research, and this fine-tuned checkpoint has no model card of its own. mT5-small reaches 96% of its ROUGE-L at a quarter of the size and under a quarter of the median latency.
 - **BERT2BERT is a genuine contender.** It is 0.2 ROUGE-L behind mT5-small, scores higher on BERTScore, and is slightly faster at the median, with half the parameters. It loses on robustness rather than quality: the model card states no license, it loads correctly under transformers 5 only through this repo's re-tying fix, its BERT window is fixed at 512 tokens (mT5 takes 768, so fewer chunks), and its ROUGE-2 is 1.4 points lower. If those risks were acceptable, it would be the faster choice; switching is a one-variable change (`OZETLE_MODEL=bert2bert`).
 - **Bigger was not better.** mT5-base scored *below* mT5-small on this path.
 
@@ -223,4 +223,4 @@ tests/          unit, service (moto), tiny-model, e2e (Playwright)
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Model licenses are their own: mT5-small is MIT, mT5-base is Apache-2.0, and TURNA is non-commercial research only. The test font (DejaVu Sans) ships under [its own license](tests/fixtures/fonts/LICENSE).
+MIT, see [LICENSE](LICENSE). Model licenses are their own, as listed on Hugging Face: mT5-small is MIT and mT5-base is Apache-2.0. The base [TURNA](https://huggingface.co/boun-tabi-LMG/TURNA) model is shared solely for non-commercial academic research; the fine-tuned checkpoint and BERT2BERT state no license. The test font (DejaVu Sans) ships under [its own license](tests/fixtures/fonts/LICENSE).
