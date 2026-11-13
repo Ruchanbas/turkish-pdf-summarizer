@@ -589,9 +589,22 @@ class TestLogs:
 
 
 class TestEngine:
-    def test_motor_tembel_kurulur(self) -> None:
+    def test_motor_tembel_kurulur(self, monkeypatch) -> None:
+        import importlib.util
+
         from ozetle.models.summarizer import HFSummarizer
+        from ozetle.service import engine as engine_module
         from ozetle.service.engine import build_engine, cached_engine_factory
+
+        # keybert kurulu olmasa da (CI test işi) KeyBERT yolunu sına; kurulum
+        # tembel olduğu için paket gerçekten içe aktarılmaz.
+        real_find_spec = importlib.util.find_spec
+        monkeypatch.setattr(
+            importlib.util,
+            "find_spec",
+            lambda name, *a: object() if name == "keybert" else real_find_spec(name, *a),
+        )
+        engine_module._engine_for.cache_clear()
 
         engine = build_engine(Settings(model="mt5-base", keywords_enabled=False))
         assert isinstance(engine.summarizer, HFSummarizer)
