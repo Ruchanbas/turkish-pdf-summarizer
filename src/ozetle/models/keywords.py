@@ -13,7 +13,8 @@ Eski kodda üç sessiz hata vardı:
 
 Gerçek modelle ilk denemede bir sorun daha görüldü: "ölçüldü dr", "toplam mg"
 gibi adaylar. Kısaltmalar (iki harf) ve çekimli fiiller ("gözlendi",
-"verilmiştir") anahtar kelime olamaz; :func:`candidate_tokens` bunları eler.
+"verilmiştir") anahtar kelime olamaz; :func:`candidate_phrases` bunları eler
+ve metinde gerçekten yan yana durmayan kelimelerden ikili kurmaz.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any, Protocol
 
 from ozetle.models.loader import LazyModel
@@ -62,19 +64,39 @@ _VERB_FORM = re.compile(
 )
 
 
-def candidate_tokens(text: str) -> list[str]:
-    """Anahtar kelime adayı olabilecek kelimeler (Türkçe küçültülmüş).
+#: Cümle ve öbek sınırları: ikili ifadeler bunları aşamaz.
+_BOUNDARY = re.compile(r"[.!?;:,()\[\]\"«»/]+")
+_ANY_WORD = re.compile(r"[^\W_]+")
 
-    >>> candidate_tokens("Kas kuvveti 12 hafta sonra anlamlı ölçüde arttı ve gözlendi; dr mg")
-    ['kas', 'kuvveti', 'hafta', 'anlamlı', 'ölçüde', 'arttı']
+
+def _keep(word: str) -> bool:
+    if len(word) < 3 or not word.isalpha() or word in TURKISH_STOPWORDS:
+        return False
+    return not (len(word) > 5 and _VERB_FORM.search(word))
+
+
+def candidate_phrases(text: str) -> list[str]:
+    """Anahtar kelime adayları: tek kelimeler ve **gerçekten yan yana** ikililer.
+
+    scikit-learn'ün n-gram üreticisi stopword'leri attıktan sonra kalan
+    kelimeleri birleştirir; aradaki fiil elenince cümle sınırının iki yanı
+    yan yana düşer ve "sonuçları ortalama" gibi metinde hiç geçmeyen ikililer
+    doğar. Burada ikili yalnızca aynı cümle öbeğinde, arada elenen kelime
+    olmadan yan yana duran iki aday kelimeden kurulur.
+
+    >>> candidate_phrases("Kas kuvveti ölçüldü. Sonuçlar gözlendi; dr mg")
+    ['kas', 'kuvveti', 'kas kuvveti', 'sonuçlar']
     """
-    out = []
-    for token in _WORD.findall(turkish_lower(text)):
-        if token in TURKISH_STOPWORDS:
-            continue
-        if len(token) > 5 and _VERB_FORM.search(token):
-            continue
-        out.append(token)
+    out: list[str] = []
+    for segment in _BOUNDARY.split(turkish_lower(text)):
+        run: list[str] = []
+        for word in [*_ANY_WORD.findall(segment), ""]:
+            if word and _keep(word):
+                run.append(word)
+                continue
+            out.extend(run)
+            out.extend(f"{a} {b}" for a, b in pairwise(run))
+            run = []
     return out
 
 
@@ -89,15 +111,10 @@ class KeywordExtractor(Protocol):
 
 
 def _turkish_vectorizer() -> Any:
-    """Türkçe küçültme yapan n-gram vektörleştirici (scikit-learn)."""
+    """Adayları :func:`candidate_phrases` ile üreten vektörleştirici (scikit-learn)."""
     from sklearn.feature_extraction.text import CountVectorizer
 
-    return CountVectorizer(
-        ngram_range=(1, 2),
-        tokenizer=candidate_tokens,  # küçültme, stopword ve fiil eleme burada
-        lowercase=False,
-        token_pattern=None,
-    )
+    return CountVectorizer(analyzer=candidate_phrases, lowercase=False)
 
 
 def _load_keybert(model_name: str) -> Any:

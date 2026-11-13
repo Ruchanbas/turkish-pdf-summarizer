@@ -434,16 +434,16 @@ class TestDownload:
         assert capsys.readouterr().out == ""
 
 
-class TestCandidateTokens:
+class TestCandidatePhrases:
     @pytest.mark.parametrize(
         "fiil",
         ["gözlendi", "ölçüldü", "verilmiştir", "artmaktadır", "azalttı", "yapıldı", "bulundu",
          "önemlidir", "artıyor", "gösterdi", "edildi"],
     )  # fmt: skip
     def test_cekimli_fiil_elenir(self, fiil):
-        from ozetle.models.keywords import candidate_tokens
+        from ozetle.models.keywords import candidate_phrases
 
-        assert candidate_tokens(fiil) == []
+        assert candidate_phrases(fiil) == []
 
     @pytest.mark.parametrize(
         "isim",
@@ -452,11 +452,25 @@ class TestCandidateTokens:
     )  # fmt: skip
     def test_ti_di_ile_biten_isim_korunur(self, isim):
         """'kas kuvveti' gibi alanın en önemli terimleri fiil sanılmamalı."""
-        from ozetle.models.keywords import candidate_tokens
+        from ozetle.models.keywords import candidate_phrases
 
-        assert candidate_tokens(isim) == [isim]
+        assert candidate_phrases(isim) == [isim]
 
     def test_kisaltma_ve_sayi_elenir(self):
-        from ozetle.models.keywords import candidate_tokens
+        from ozetle.models.keywords import candidate_phrases
 
-        assert candidate_tokens("500 mg doz, Dr. Yılmaz") == ["doz", "yılmaz"]
+        assert candidate_phrases("500 mg doz, Dr. Yılmaz") == ["doz", "yılmaz"]
+
+    def test_ikili_cumle_sinirini_asmaz(self):
+        """Regresyon (gerçek modelde görüldü): 'sonuçları özetlemektedir.
+        Ortalama' → fiil elenince 'sonuçları ortalama' ikilisi doğuyordu."""
+        from ozetle.models.keywords import candidate_phrases
+
+        out = candidate_phrases("Tablo bu sonuçları özetlemektedir. Ortalama değer yüksek")
+        assert "sonuçları ortalama" not in out
+        assert "ortalama değer" in out
+
+    def test_ikili_elenen_kelimeyi_atlamaz(self):
+        from ozetle.models.keywords import candidate_phrases
+
+        assert "iyileşme fizyoterapist" not in candidate_phrases("iyileşme gözlendi fizyoterapist")
